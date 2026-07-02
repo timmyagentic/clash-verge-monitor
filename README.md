@@ -4,6 +4,8 @@ Local traffic ledger for Clash Verge Rev, with support for any Mihomo-compatible
 
 The MVP records future traffic from the Mihomo controller, attributes bytes to a process where possible, stores the data in SQLite, and prints daily reports from the local database.
 
+For the full Chinese project context and current MVP status, see [docs/project-brief.zh-CN.md](docs/project-brief.zh-CN.md).
+
 ## Why this project exists
 
 Clash Verge/Mihomo logs are useful for connection history, but they usually do not preserve exact historical per-connection byte deltas. `clash-verge-traffic-ledger` records those deltas while the core is running, so daily app-level usage can be reconstructed later.
