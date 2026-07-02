@@ -106,7 +106,7 @@ def command_export(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="mihomo-flow-ledger")
+    parser = argparse.ArgumentParser(prog="clash-verge-traffic-ledger")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doctor = subparsers.add_parser("doctor", help="Check controller and attribution state")
@@ -146,4 +146,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

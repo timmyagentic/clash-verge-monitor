@@ -1,6 +1,6 @@
 import unittest
 
-from mihomo_flow_ledger.models import ConnectionSnapshot
+from clash_verge_traffic_ledger.models import ConnectionSnapshot
 
 
 class ConnectionSnapshotTests(unittest.TestCase):
@@ -60,4 +60,3 @@ class ConnectionSnapshotTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mihomo-flow-ledger"
+name = "clash-verge-traffic-ledger"
 version = "0.1.0"
-description = "Local Mihomo and Clash Verge traffic ledger"
+description = "Clash Verge traffic ledger for Mihomo-compatible cores"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -15,8 +15,7 @@ authors = [
 dependencies = []
 
 [project.scripts]
-mihomo-flow-ledger = "mihomo_flow_ledger.__main__:main"
+clash-verge-traffic-ledger = "clash_verge_traffic_ledger.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-

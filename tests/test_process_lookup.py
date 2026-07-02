@@ -1,6 +1,6 @@
 import unittest
 
-from mihomo_flow_ledger.process_lookup import parse_lsof_process_names, choose_process_name
+from clash_verge_traffic_ledger.process_lookup import parse_lsof_process_names, choose_process_name
 
 
 class ProcessLookupTests(unittest.TestCase):
@@ -17,4 +17,3 @@ class ProcessLookupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

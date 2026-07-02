@@ -4,9 +4,9 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mihomo_flow_ledger.models import TrafficDelta
-from mihomo_flow_ledger.reports import export_csv, export_markdown, format_report
-from mihomo_flow_ledger.store import LedgerStore
+from clash_verge_traffic_ledger.models import TrafficDelta
+from clash_verge_traffic_ledger.reports import export_csv, export_markdown, format_report
+from clash_verge_traffic_ledger.store import LedgerStore
 
 
 class StoreAndReportTests(unittest.TestCase):
@@ -68,4 +68,3 @@ class StoreAndReportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

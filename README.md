@@ -1,12 +1,12 @@
-# mihomo-flow-ledger
+# clash-verge-traffic-ledger
 
-Local traffic ledger for Mihomo and Clash Verge Rev.
+Local traffic ledger for Clash Verge Rev, with support for any Mihomo-compatible controller.
 
 The MVP records future traffic from the Mihomo controller, attributes bytes to a process where possible, stores the data in SQLite, and prints daily reports from the local database.
 
 ## Why this project exists
 
-Clash Verge/Mihomo logs are useful for connection history, but they usually do not preserve exact historical per-connection byte deltas. `mihomo-flow-ledger` records those deltas while the core is running, so daily app-level usage can be reconstructed later.
+Clash Verge/Mihomo logs are useful for connection history, but they usually do not preserve exact historical per-connection byte deltas. `clash-verge-traffic-ledger` records those deltas while the core is running, so daily app-level usage can be reconstructed later.
 
 ## References
 
@@ -36,9 +36,9 @@ This repo intentionally keeps the first version small and local. It borrows prov
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e .
-python -m mihomo_flow_ledger doctor
-python -m mihomo_flow_ledger run --interval 1
-python -m mihomo_flow_ledger today
+python -m clash_verge_traffic_ledger doctor
+python -m clash_verge_traffic_ledger run --interval 1
+python -m clash_verge_traffic_ledger today
 ```
 
 By default the database is created at `data/ledger.sqlite` under the current working directory.
@@ -46,17 +46,17 @@ By default the database is created at `data/ledger.sqlite` under the current wor
 ## Commands
 
 ```bash
-python -m mihomo_flow_ledger doctor
-python -m mihomo_flow_ledger run --interval 1 --database data/ledger.sqlite
-python -m mihomo_flow_ledger today --database data/ledger.sqlite
-python -m mihomo_flow_ledger export --date 2026-07-02 --format markdown --output report.md
-python -m mihomo_flow_ledger export --date 2026-07-02 --format csv --output report.csv
+python -m clash_verge_traffic_ledger doctor
+python -m clash_verge_traffic_ledger run --interval 1 --database data/ledger.sqlite
+python -m clash_verge_traffic_ledger today --database data/ledger.sqlite
+python -m clash_verge_traffic_ledger export --date 2026-07-02 --format markdown --output report.md
+python -m clash_verge_traffic_ledger export --date 2026-07-02 --format csv --output report.csv
 ```
 
 For HTTP controller mode:
 
 ```bash
-python -m mihomo_flow_ledger doctor --controller http://127.0.0.1:9090 --secret "$MIHOMO_SECRET"
+python -m clash_verge_traffic_ledger doctor --controller http://127.0.0.1:9090 --secret "$MIHOMO_SECRET"
 ```
 
 ## Limits
@@ -64,4 +64,3 @@ python -m mihomo_flow_ledger doctor --controller http://127.0.0.1:9090 --secret 
 - This records future traffic only. It cannot recover exact bytes from old Clash Verge logs that lack byte counters.
 - Process attribution depends on Mihomo process metadata and `lsof`; TUN traffic without process metadata may remain `unknown`.
 - The MVP is a CLI/local SQLite tool. A Web UI can be added after the accounting model is proven.
-

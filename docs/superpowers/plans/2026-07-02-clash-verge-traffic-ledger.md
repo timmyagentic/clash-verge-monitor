@@ -2,8 +2,8 @@
 
 ## Project setup
 
-- Create a Python stdlib-only CLI project named `mihomo-flow-ledger`.
-- Keep source under `src/mihomo_flow_ledger`.
+- Create a Python stdlib-only CLI project named `clash-verge-traffic-ledger`.
+- Keep source under `src/clash_verge_traffic_ledger`.
 - Keep tests under `tests`.
 - Initialize a local git repository.
 
@@ -34,4 +34,3 @@
 - Run `doctor` against `/tmp/verge/verge-mihomo.sock`.
 - Run a short sampler against the live socket and verify the database/report path.
 - Commit the resulting repo.
-

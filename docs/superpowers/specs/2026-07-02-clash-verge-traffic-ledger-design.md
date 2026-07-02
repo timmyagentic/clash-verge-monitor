@@ -1,4 +1,4 @@
-# mihomo-flow-ledger MVP Design
+# clash-verge-traffic-ledger MVP Design
 
 ## Goal
 
@@ -74,4 +74,3 @@ SQLite tables:
 - Unit tests cover connection parsing, delta computation, `lsof` parsing, SQLite rollups, and report export.
 - `doctor` can query the current Clash Verge/Mihomo unix socket on this machine.
 - A short live sampling run creates a SQLite database and a readable `today` report.
-

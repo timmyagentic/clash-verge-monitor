@@ -1,8 +1,8 @@
 import unittest
 from datetime import datetime, timezone
 
-from mihomo_flow_ledger.models import ConnectionSnapshot
-from mihomo_flow_ledger.monitor import DeltaComputer
+from clash_verge_traffic_ledger.models import ConnectionSnapshot
+from clash_verge_traffic_ledger.monitor import DeltaComputer
 
 
 def snapshot(connection_id, upload, download, process="Cursor", host="api2.cursor.sh"):
@@ -48,4 +48,3 @@ class DeltaComputerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
