@@ -1,0 +1,25 @@
+# Anomaly Policy
+
+The runtime uses deterministic policy version 1. It does not ask a model to classify traffic.
+
+## Windows And Coverage
+
+- Default analysis window: 7 calendar days ending on the requested date.
+- Requested baseline: the preceding 30 calendar days.
+- Robust comparisons require at least 7 active baseline days. Fourteen active days raise confidence to `high`.
+- Missing calendar days are not silently presented as observed traffic days.
+
+## Cases
+
+- `high_process_usage` / `high_host_usage`: informational absolute volume threshold of 500 MiB per active window day.
+- `new_process` / `new_host`: at least 500 MiB in the window with zero traffic in the available baseline.
+- `process_spike` / `host_spike`: current daily average is at least 3x baseline and exceeds a median/MAD robust limit.
+- `sustained_*_spike`: the robust spike limit is exceeded on at least 3 window days.
+- `*_upload_spike`: at least 200 MiB uploaded and the robust upload baseline is exceeded by at least 3x.
+- `unknown_process_ratio`: unknown process bytes are at least 25% of window traffic; 75% or more is critical.
+
+The median absolute deviation is scaled by 1.4826. A minimum absolute daily margin prevents tiny baselines from generating noisy ratios.
+
+## Interpretation Limits
+
+A case proves that a configured statistical or absolute condition occurred. It does not prove malware, exfiltration, or policy violation. Process names and hosts are local evidence only; inspect counterparties and timestamps before assigning a cause. Compacted raw rows can limit evidence detail while preserving rollup-level findings.

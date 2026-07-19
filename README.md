@@ -1,8 +1,8 @@
 # clash-verge-traffic-ledger
 
-Local traffic ledger for Clash Verge Rev, with support for any Mihomo-compatible controller.
+Local, Agent-native traffic auditor for Clash Verge Rev, with support for any Mihomo-compatible controller.
 
-The MVP records future traffic from the Mihomo controller, attributes bytes to a process where possible, stores the data in SQLite, and prints daily reports from the local database.
+The runtime records future traffic from the Mihomo controller, attributes bytes to a process where possible, stores the data in SQLite, and exposes deterministic health, audit, evidence, reporting, and retention commands. The bundled Skill turns those commands into a natural-language workflow without MCP or a separate model API.
 
 For the full Chinese project context and current MVP status, see [docs/project-brief.zh-CN.md](docs/project-brief.zh-CN.md).
 
@@ -34,7 +34,29 @@ This repo intentionally keeps the first version small and local. It borrows prov
 - Install or remove a per-user `launchd` sampler service.
 - Print database and sampler status, anomaly hints, a read-only local Web dashboard, and prune or compact old raw deltas.
 
-## Quick start
+## Agent-first Skill
+
+The canonical Skill is
+`.agents/skills/clash-verge-traffic-auditor/`. From Codex, invoke it with requests
+such as "analyze the last week of Clash Verge traffic", "why is unknown traffic
+high?", or "install and start monitoring".
+
+The bundled bootstrap installs a versioned runtime under
+`~/Library/Application Support/clash-verge-traffic-ledger/`. It adopts an
+existing database by path and never moves it automatically.
+
+```bash
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py status --pretty
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py install --source "$PWD" --dry-run --pretty
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py install --source "$PWD" --load --pretty
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py audit --since 7 --baseline 30 --pretty
+```
+
+Installation is idempotent. `--load` is explicit because it replaces and
+restarts the per-user sampler and dashboard LaunchAgents. Uninstall and data
+maintenance also default to a dry run.
+
+## Developer quick start
 
 ```bash
 python3 -m venv .venv
@@ -57,6 +79,10 @@ python -m clash_verge_traffic_ledger export --date 2026-07-02 --format markdown 
 python -m clash_verge_traffic_ledger export --date 2026-07-02 --format csv --output report.csv
 python -m clash_verge_traffic_ledger status --database data/ledger.sqlite
 python -m clash_verge_traffic_ledger anomalies --database data/ledger.sqlite
+python -m clash_verge_traffic_ledger health --database data/ledger.sqlite --pretty
+python -m clash_verge_traffic_ledger audit --database data/ledger.sqlite --since 7 --baseline 30 --pretty
+python -m clash_verge_traffic_ledger evidence --database data/ledger.sqlite --case-id CASE_ID --pretty
+python -m clash_verge_traffic_ledger maintenance --database data/ledger.sqlite --before 2026-07-01 --dry-run --pretty
 python -m clash_verge_traffic_ledger web --database data/ledger.sqlite --port 8765
 python -m clash_verge_traffic_ledger prune --database data/ledger.sqlite --before 2026-07-01 --dry-run
 python -m clash_verge_traffic_ledger compact --database data/ledger.sqlite --before 2026-07-01 --dry-run
@@ -79,8 +105,13 @@ Use `--no-load` to write the LaunchAgent plist without starting it immediately.
 `status` checks the default service label with read-only `launchctl print`; pass
 `--no-service-check` to report database-only status.
 
+For persistent HTTP-controller authentication, use a mode-600 `--secret-file`.
+Plain `--secret` values are intentionally rejected by `install-service` so they
+cannot be written into plist arguments.
+
 ## Limits
 
 - This records future traffic only. It cannot recover exact bytes from old Clash Verge logs that lack byte counters.
 - Process attribution depends on Mihomo process metadata and `lsof`; TUN traffic without process metadata may remain `unknown`.
 - The Web UI is intentionally read-only and local. It shows summary cards, a 7-day trend, anomaly hints, process totals, and host totals. The authoritative data remains in SQLite.
+- Anomaly cases are deterministic evidence, not malware verdicts. High volume and `unknown` attribution require contextual review.

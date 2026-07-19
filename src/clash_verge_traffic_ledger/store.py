@@ -12,16 +12,31 @@ from .models import TrafficDelta
 
 
 class LedgerStore:
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
-        if self.path.parent:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_schema()
+    def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
+        self.path = Path(path).expanduser()
+        self.read_only = read_only
+        if read_only:
+            if not self.path.is_file():
+                raise FileNotFoundError(f"ledger database not found: {self.path}")
+        else:
+            if self.path.parent:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._init_schema()
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
+        if self.read_only:
+            uri = f"{self.path.resolve().as_uri()}?mode=ro"
+            connection = sqlite3.connect(uri, uri=True, timeout=30.0)
+            connection.execute("PRAGMA query_only = ON")
+        else:
+            connection = sqlite3.connect(self.path, timeout=30.0)
+        connection.execute("PRAGMA busy_timeout = 30000")
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _require_writable(self) -> None:
+        if self.read_only:
+            raise RuntimeError("ledger store is read-only")
 
     def _init_schema(self) -> None:
         with closing(self.connect()) as connection:
@@ -74,6 +89,7 @@ class LedgerStore:
                 )
 
     def record_deltas(self, deltas: Iterable[TrafficDelta]) -> None:
+        self._require_writable()
         rows = list(deltas)
         if not rows:
             return
@@ -175,6 +191,7 @@ class LedgerStore:
         return int(row["count"])
 
     def delete_raw_before(self, date: str) -> int:
+        self._require_writable()
         with closing(self.connect()) as connection:
             with connection:
                 count = connection.execute(
@@ -185,6 +202,7 @@ class LedgerStore:
         return int(count["count"])
 
     def compact_raw_before(self, date: str) -> dict[str, int]:
+        self._require_writable()
         deleted = self.delete_raw_before(date)
         return {
             "deleted_raw_rows": deleted,
@@ -242,6 +260,110 @@ class LedgerStore:
                 "total_bytes": upload + download,
             }
         return list(totals.values())
+
+    def active_dates(self, start_date: str, end_date: str) -> list[str]:
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                """
+                SELECT date
+                FROM daily_process
+                WHERE date BETWEEN ? AND ?
+                GROUP BY date
+                HAVING SUM(upload_bytes + download_bytes) > 0
+                ORDER BY date
+                """,
+                (start_date, end_date),
+            ).fetchall()
+        return [str(row["date"]) for row in rows]
+
+    def subject_daily(
+        self,
+        subject_type: str,
+        start_date: str,
+        end_date: str,
+        subject: str | None = None,
+    ) -> list[dict[str, int | str]]:
+        table, key = self._subject_table(subject_type)
+        parameters: list[str] = [start_date, end_date]
+        subject_filter = ""
+        if subject is not None:
+            subject_filter = f" AND {key} = ?"
+            parameters.append(subject)
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT date, {key} AS subject, upload_bytes, download_bytes,
+                       upload_bytes + download_bytes AS total_bytes
+                FROM {table}
+                WHERE date BETWEEN ? AND ?{subject_filter}
+                ORDER BY date, total_bytes DESC
+                """,
+                parameters,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def evidence_breakdown(
+        self,
+        subject_type: str,
+        subject: str,
+        start_date: str,
+        end_date: str,
+        limit: int = 20,
+    ) -> list[dict[str, int | str]]:
+        _, key = self._subject_table(subject_type)
+        counterpart = "host" if subject_type == "process" else "process"
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT {counterpart} AS counterpart,
+                       destination_ip,
+                       destination_port,
+                       rule,
+                       network,
+                       COUNT(*) AS delta_rows,
+                       COUNT(DISTINCT connection_id) AS connections,
+                       MIN(ts) AS first_seen,
+                       MAX(ts) AS last_seen,
+                       SUM(upload_bytes) AS upload_bytes,
+                       SUM(download_bytes) AS download_bytes,
+                       SUM(upload_bytes + download_bytes) AS total_bytes
+                FROM traffic_deltas
+                WHERE date BETWEEN ? AND ? AND {key} = ?
+                GROUP BY {counterpart}, destination_ip, destination_port, rule, network
+                ORDER BY total_bytes DESC
+                LIMIT ?
+                """,
+                (start_date, end_date, subject, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def rollup_bounds(self) -> dict[str, str | None]:
+        with closing(self.connect()) as connection:
+            row = connection.execute(
+                "SELECT MIN(date) AS first_date, MAX(date) AS last_date FROM daily_process"
+            ).fetchone()
+        return {
+            "first_date": str(row["first_date"]) if row["first_date"] else None,
+            "last_date": str(row["last_date"]) if row["last_date"] else None,
+        }
+
+    def raw_bounds(self) -> dict[str, str | None]:
+        with closing(self.connect()) as connection:
+            row = connection.execute(
+                "SELECT MIN(date) AS first_date, MAX(date) AS last_date FROM traffic_deltas"
+            ).fetchone()
+        return {
+            "first_date": str(row["first_date"]) if row["first_date"] else None,
+            "last_date": str(row["last_date"]) if row["last_date"] else None,
+        }
+
+    @staticmethod
+    def _subject_table(subject_type: str) -> tuple[str, str]:
+        if subject_type == "process":
+            return "daily_process", "process"
+        if subject_type == "host":
+            return "daily_host", "host"
+        raise ValueError(f"unsupported subject type: {subject_type}")
 
     def _daily_rows(
         self,

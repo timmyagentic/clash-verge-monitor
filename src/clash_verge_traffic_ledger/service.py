@@ -24,7 +24,8 @@ def build_launchd_plist(
     interval: float,
     stdout_path: str,
     stderr_path: str,
-    secret: str | None = None,
+    max_backoff: float = 30.0,
+    secret_file: str | None = None,
 ) -> bytes:
     arguments = [
         python,
@@ -33,13 +34,15 @@ def build_launchd_plist(
         "run",
         "--interval",
         f"{interval:g}",
+        "--max-backoff",
+        f"{max_backoff:g}",
         "--database",
         database,
         "--controller",
         controller,
     ]
-    if secret:
-        arguments.extend(["--secret", secret])
+    if secret_file:
+        arguments.extend(["--secret-file", secret_file])
 
     payload = {
         "Label": label,

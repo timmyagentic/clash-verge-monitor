@@ -1,12 +1,29 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from .audit import (
+    DEFAULT_BASELINE_DAYS,
+    DEFAULT_WINDOW_DAYS,
+    audit_traffic,
+    build_evidence,
+    find_case,
+)
 from .anomalies import detect_anomalies, format_anomalies
 from .client import ControllerConfig, DEFAULT_UNIX_SOCKET, MihomoClient
+from .contracts import (
+    EXIT_DATA_ERROR,
+    EXIT_OK,
+    EXIT_UNAVAILABLE,
+    envelope,
+    error_item,
+    render_json,
+)
+from .health import inspect_health
 from .monitor import Sampler
 from .process_lookup import lookup_process_name, lsof_path
 from .reports import export_csv, export_markdown, format_report
@@ -34,6 +51,7 @@ def add_controller_args(parser: argparse.ArgumentParser) -> None:
         help="Mihomo controller URL or unix socket path",
     )
     parser.add_argument("--secret", default=None, help="Mihomo controller secret")
+    parser.add_argument("--secret-file", default=None, help="Read the controller secret from a file")
     parser.add_argument("--timeout", type=float, default=5.0, help="Controller timeout in seconds")
 
 
@@ -41,18 +59,32 @@ def add_database_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--database", default=DEFAULT_DATABASE, help="SQLite database path")
 
 
+def add_json_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+
+
 def absolute_path(path: str | Path) -> str:
     return str(Path(path).expanduser().resolve())
 
 
-def build_client(args: argparse.Namespace) -> MihomoClient:
-    return MihomoClient(
-        ControllerConfig(
-            controller=args.controller,
-            secret=args.secret,
-            timeout=args.timeout,
-        )
+def controller_config_from_args(args: argparse.Namespace) -> ControllerConfig:
+    if args.secret and args.secret_file:
+        raise ValueError("use either --secret or --secret-file, not both")
+    secret = args.secret or os.environ.get("MIHOMO_SECRET")
+    if args.secret_file:
+        secret_path = Path(args.secret_file).expanduser()
+        secret = secret_path.read_text(encoding="utf-8").strip()
+        if not secret:
+            raise ValueError(f"secret file is empty: {secret_path}")
+    return ControllerConfig(
+        controller=args.controller,
+        secret=secret,
+        timeout=args.timeout,
     )
+
+
+def build_client(args: argparse.Namespace) -> MihomoClient:
+    return MihomoClient(controller_config_from_args(args))
 
 
 def command_doctor(args: argparse.Namespace) -> int:
@@ -80,7 +112,12 @@ def command_doctor(args: argparse.Namespace) -> int:
 def command_run(args: argparse.Namespace) -> int:
     client = build_client(args)
     store = LedgerStore(args.database)
-    sampler = Sampler(client=client, store=store, interval=args.interval)
+    sampler = Sampler(
+        client=client,
+        store=store,
+        interval=args.interval,
+        max_backoff=args.max_backoff,
+    )
     print(f"writing to {Path(args.database)}")
     print(f"polling {args.controller} every {args.interval:g}s")
     try:
@@ -143,6 +180,195 @@ def command_anomalies(args: argparse.Namespace) -> int:
     return 0
 
 
+def _machine_error(
+    operation: str,
+    code: str,
+    exc: Exception,
+    *,
+    pretty: bool,
+    exit_code: int,
+    retryable: bool = False,
+) -> int:
+    payload = envelope(
+        operation,
+        None,
+        ok=False,
+        errors=[error_item(code, str(exc), retryable=retryable)],
+    )
+    print(render_json(payload, pretty=pretty))
+    return exit_code
+
+
+def command_health(args: argparse.Namespace) -> int:
+    try:
+        data, warnings, next_actions = inspect_health(
+            args.database,
+            controller_config_from_args(args),
+            service_label=None if args.no_service_check else args.service_label,
+            max_sample_age_seconds=args.max_sample_age,
+            check_controller=not args.no_controller_check,
+        )
+    except Exception as exc:
+        return _machine_error(
+            "health",
+            "health_check_failed",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_UNAVAILABLE,
+            retryable=True,
+        )
+    print(
+        render_json(
+            envelope("health", data, warnings=warnings, next_actions=next_actions),
+            pretty=args.pretty,
+        )
+    )
+    return EXIT_OK
+
+
+def command_audit(args: argparse.Namespace) -> int:
+    try:
+        store = LedgerStore(args.database, read_only=True)
+        data, warnings, next_actions = audit_traffic(
+            store,
+            args.end_date or datetime.now().astimezone().date().isoformat(),
+            window_days=args.since,
+            baseline_days=args.baseline,
+            case_limit=args.limit,
+        )
+    except FileNotFoundError as exc:
+        return _machine_error(
+            "audit",
+            "database_missing",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_UNAVAILABLE,
+        )
+    except (ValueError, LookupError) as exc:
+        return _machine_error(
+            "audit",
+            "invalid_audit_request",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_DATA_ERROR,
+        )
+    except Exception as exc:
+        return _machine_error(
+            "audit",
+            "audit_failed",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_DATA_ERROR,
+            retryable=True,
+        )
+    print(
+        render_json(
+            envelope("audit", data, warnings=warnings, next_actions=next_actions),
+            pretty=args.pretty,
+        )
+    )
+    return EXIT_OK
+
+
+def command_evidence(args: argparse.Namespace) -> int:
+    try:
+        store = LedgerStore(args.database, read_only=True)
+        case = find_case(store, args.case_id)
+        data = build_evidence(store, case, limit=args.limit)
+    except FileNotFoundError as exc:
+        return _machine_error(
+            "evidence",
+            "database_missing",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_UNAVAILABLE,
+        )
+    except (ValueError, LookupError) as exc:
+        return _machine_error(
+            "evidence",
+            "case_not_found",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_DATA_ERROR,
+        )
+    except Exception as exc:
+        return _machine_error(
+            "evidence",
+            "evidence_failed",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_DATA_ERROR,
+            retryable=True,
+        )
+    print(render_json(envelope("evidence", data), pretty=args.pretty))
+    return EXIT_OK
+
+
+def command_maintenance(args: argparse.Namespace) -> int:
+    try:
+        store = LedgerStore(args.database, read_only=not args.apply)
+        matching_rows = store.raw_delta_count_before(args.before)
+        warnings = []
+        next_actions = []
+        result: dict[str, int] | None = None
+        if args.apply:
+            if args.mode == "compact":
+                result = store.compact_raw_before(args.before)
+            else:
+                deleted = store.delete_raw_before(args.before)
+                result = {
+                    "deleted_raw_rows": deleted,
+                    "remaining_raw_rows": store.raw_delta_count(),
+                    "preserved_rollup_dates": store.rollup_date_count(),
+                }
+        else:
+            next_actions.append(
+                {
+                    "code": "confirm_maintenance",
+                    "description": "After explicit user confirmation, rerun with --apply.",
+                    "parameters": {"mode": args.mode, "before": args.before},
+                }
+            )
+        if args.mode == "prune":
+            warnings.append(
+                {
+                    "code": "raw_evidence_deletion",
+                    "message": "Pruning removes raw evidence; daily rollups remain but case drill-down may be limited.",
+                }
+            )
+        data = {
+            "mode": args.mode,
+            "before": args.before,
+            "dry_run": not args.apply,
+            "matching_raw_rows": matching_rows,
+            "result": result,
+        }
+    except FileNotFoundError as exc:
+        return _machine_error(
+            "maintenance",
+            "database_missing",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_UNAVAILABLE,
+        )
+    except Exception as exc:
+        return _machine_error(
+            "maintenance",
+            "maintenance_failed",
+            exc,
+            pretty=args.pretty,
+            exit_code=EXIT_DATA_ERROR,
+            retryable=True,
+        )
+    print(
+        render_json(
+            envelope("maintenance", data, warnings=warnings, next_actions=next_actions),
+            pretty=args.pretty,
+        )
+    )
+    return EXIT_OK
+
+
 def command_web(args: argparse.Namespace) -> int:
     store = LedgerStore(args.database)
     print(f"serving http://{args.host}:{args.port}/")
@@ -181,6 +407,22 @@ def command_compact(args: argparse.Namespace) -> int:
 
 
 def command_install_service(args: argparse.Namespace) -> int:
+    if args.secret:
+        print(
+            "install-service does not persist --secret; use a mode-600 --secret-file instead",
+            file=sys.stderr,
+        )
+        return 1
+    secret_file = None
+    if args.secret_file:
+        path = Path(args.secret_file).expanduser().resolve()
+        if not path.is_file():
+            print(f"secret file not found: {path}", file=sys.stderr)
+            return 1
+        if path.stat().st_mode & 0o077:
+            print(f"secret file must not be accessible by group or others: {path}", file=sys.stderr)
+            return 1
+        secret_file = str(path)
     database = absolute_path(args.database)
     log_dir = Path(database).parent
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -194,7 +436,8 @@ def command_install_service(args: argparse.Namespace) -> int:
         database=database,
         controller=args.controller,
         interval=args.interval,
-        secret=args.secret,
+        max_backoff=args.max_backoff,
+        secret_file=secret_file,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
     )
@@ -232,6 +475,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_controller_args(run)
     add_database_arg(run)
     run.add_argument("--interval", type=float, default=1.0, help="Poll interval in seconds")
+    run.add_argument("--max-backoff", type=float, default=30.0, help="Maximum retry delay")
     run.set_defaults(func=command_run)
 
     today = subparsers.add_parser("today", help="Print daily traffic report")
@@ -265,6 +509,45 @@ def build_parser() -> argparse.ArgumentParser:
     anomalies.add_argument("--spike-multiplier", type=float, default=3.0)
     anomalies.set_defaults(func=command_anomalies)
 
+    health = subparsers.add_parser("health", help="Print machine-readable runtime health")
+    add_controller_args(health)
+    add_database_arg(health)
+    add_json_arg(health)
+    health.add_argument("--service-label", default=DEFAULT_LABEL)
+    health.add_argument("--max-sample-age", type=float, default=180.0)
+    health.add_argument("--no-controller-check", action="store_true")
+    health.add_argument("--no-service-check", action="store_true")
+    health.set_defaults(func=command_health)
+
+    audit = subparsers.add_parser("audit", help="Audit a traffic window and emit JSON cases")
+    add_database_arg(audit)
+    add_json_arg(audit)
+    audit.add_argument("--end-date", default=None, help="Window end date, defaults to today")
+    audit.add_argument("--since", type=int, default=DEFAULT_WINDOW_DAYS, help="Window days")
+    audit.add_argument("--baseline", type=int, default=DEFAULT_BASELINE_DAYS)
+    audit.add_argument("--limit", type=int, default=50, help="Maximum returned cases")
+    audit.set_defaults(func=command_audit)
+
+    evidence = subparsers.add_parser("evidence", help="Expand one audit case into JSON evidence")
+    add_database_arg(evidence)
+    add_json_arg(evidence)
+    evidence.add_argument("--case-id", required=True)
+    evidence.add_argument("--limit", type=int, default=20, help="Maximum raw evidence groups")
+    evidence.set_defaults(func=command_evidence)
+
+    maintenance = subparsers.add_parser(
+        "maintenance",
+        help="Plan or apply raw-data retention with JSON output",
+    )
+    add_database_arg(maintenance)
+    add_json_arg(maintenance)
+    maintenance.add_argument("--before", required=True)
+    maintenance.add_argument("--mode", choices=["compact", "prune"], default="compact")
+    maintenance_mode = maintenance.add_mutually_exclusive_group()
+    maintenance_mode.add_argument("--apply", action="store_true")
+    maintenance_mode.add_argument("--dry-run", action="store_true")
+    maintenance.set_defaults(func=command_maintenance)
+
     web = subparsers.add_parser("web", help="Serve a read-only local dashboard")
     add_database_arg(web)
     web.add_argument("--host", default="127.0.0.1")
@@ -287,6 +570,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_controller_args(install_service)
     add_database_arg(install_service)
     install_service.add_argument("--interval", type=float, default=1.0)
+    install_service.add_argument("--max-backoff", type=float, default=30.0)
     install_service.add_argument("--label", default=DEFAULT_LABEL)
     install_service.add_argument("--plist", default=None, help="LaunchAgent plist path")
     install_service.add_argument("--working-directory", default=str(Path.cwd()))

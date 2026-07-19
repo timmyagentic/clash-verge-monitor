@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import sys
 import time
 from datetime import datetime
-from typing import Iterable
+from typing import Callable, Iterable
 
 from .client import MihomoClient
 from .models import ConnectionSnapshot, TrafficDelta
@@ -69,10 +70,16 @@ class Sampler:
         client: MihomoClient,
         store: LedgerStore,
         interval: float = 1.0,
+        max_backoff: float = 30.0,
     ) -> None:
+        if interval <= 0:
+            raise ValueError("interval must be positive")
+        if max_backoff < interval:
+            raise ValueError("max_backoff must be at least the polling interval")
         self.client = client
         self.store = store
         self.interval = interval
+        self.max_backoff = max_backoff
         self.delta_computer = DeltaComputer()
 
     def sample_once(self, now: datetime | None = None) -> int:
@@ -82,8 +89,29 @@ class Sampler:
         self.store.record_deltas(deltas)
         return len(deltas)
 
-    def run_forever(self) -> None:
+    def run_forever(
+        self,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        error_writer: Callable[[str], None] | None = None,
+    ) -> None:
+        write_error = error_writer or (lambda message: print(message, file=sys.stderr, flush=True))
+        consecutive_failures = 0
         while True:
-            self.sample_once()
-            time.sleep(self.interval)
-
+            try:
+                self.sample_once()
+                consecutive_failures = 0
+                delay = self.interval
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as exc:
+                consecutive_failures += 1
+                delay = min(self.max_backoff, self.interval * (2 ** min(consecutive_failures - 1, 8)))
+                write_error(
+                    "sampler error: {kind}: {message}; retrying in {delay:g}s".format(
+                        kind=type(exc).__name__,
+                        message=exc,
+                        delay=delay,
+                    )
+                )
+            sleep(delay)

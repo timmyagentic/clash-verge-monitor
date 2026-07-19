@@ -2,7 +2,7 @@ import plistlib
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
@@ -66,12 +66,32 @@ class ServiceTests(unittest.TestCase):
                 "run",
                 "--interval",
                 "2.5",
+                "--max-backoff",
+                "30",
                 "--database",
                 "/tmp/project/data/ledger.sqlite",
                 "--controller",
                 "/tmp/verge/verge-mihomo.sock",
             ],
         )
+
+    def test_launchd_uses_a_secret_file_path_instead_of_secret_contents(self):
+        payload = build_launchd_plist(
+            label="com.example.ledger",
+            python="/tmp/venv/bin/python",
+            working_directory="/tmp/project",
+            database="/tmp/project/data/ledger.sqlite",
+            controller="http://127.0.0.1:9090",
+            interval=1,
+            stdout_path="/tmp/ledger.out.log",
+            stderr_path="/tmp/ledger.err.log",
+            secret_file="/tmp/controller.secret",
+        )
+
+        arguments = plistlib.loads(payload)["ProgramArguments"]
+        self.assertIn("--secret-file", arguments)
+        self.assertIn("/tmp/controller.secret", arguments)
+        self.assertNotIn("super-secret", payload.decode("utf-8"))
 
     def test_reads_launchd_service_state_without_mutating_service(self):
         def running_runner(args, **kwargs):
@@ -215,6 +235,16 @@ class CliParserTests(unittest.TestCase):
 
         self.assertEqual(parser.parse_args(["status"]).command, "status")
         self.assertEqual(parser.parse_args(["anomalies"]).command, "anomalies")
+        self.assertEqual(parser.parse_args(["health"]).command, "health")
+        self.assertEqual(parser.parse_args(["audit"]).command, "audit")
+        self.assertEqual(
+            parser.parse_args(["evidence", "--case-id", "v1-20260719-7d-30d-000000000000"]).command,
+            "evidence",
+        )
+        self.assertEqual(
+            parser.parse_args(["maintenance", "--before", "2026-07-01"]).command,
+            "maintenance",
+        )
         self.assertEqual(parser.parse_args(["web"]).command, "web")
         self.assertEqual(parser.parse_args(["prune", "--before", "2026-07-01"]).command, "prune")
         self.assertEqual(parser.parse_args(["compact", "--before", "2026-07-01"]).command, "compact")
@@ -241,7 +271,7 @@ class CliParserTests(unittest.TestCase):
             database = root / "missing" / "ledger.sqlite"
             plist = root / "agent.plist"
 
-            with redirect_stdout(StringIO()):
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
                 result = main(
                     [
                         "install-service",
@@ -256,6 +286,25 @@ class CliParserTests(unittest.TestCase):
             self.assertEqual(result, 0)
             self.assertTrue(database.parent.exists())
             self.assertTrue(plist.exists())
+
+    def test_install_service_rejects_plaintext_secret_before_writing_plist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plist = Path(tmp) / "agent.plist"
+
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                result = main(
+                    [
+                        "install-service",
+                        "--plist",
+                        str(plist),
+                        "--secret",
+                        "super-secret",
+                        "--no-load",
+                    ]
+                )
+
+            self.assertEqual(result, 1)
+            self.assertFalse(plist.exists())
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timezone
 
 from clash_verge_traffic_ledger.models import ConnectionSnapshot
-from clash_verge_traffic_ledger.monitor import DeltaComputer
+from clash_verge_traffic_ledger.monitor import DeltaComputer, Sampler
 
 
 def snapshot(connection_id, upload, download, process="Cursor", host="api2.cursor.sh"):
@@ -44,6 +44,29 @@ class DeltaComputerTests(unittest.TestCase):
         computer.compute([snapshot("a", 100, 200), snapshot("b", 1, 1)], now)
         self.assertEqual(computer.compute([snapshot("a", 90, 250)], now), [])
         self.assertEqual(computer.compute([snapshot("b", 5, 5)], now), [])
+
+
+class SamplerRetryTests(unittest.TestCase):
+    def test_transient_errors_back_off_without_exiting(self):
+        class FailingSampler(Sampler):
+            def sample_once(self, now=None):
+                raise TimeoutError("controller timed out")
+
+        sampler = FailingSampler(client=object(), store=object(), interval=1, max_backoff=4)
+        delays = []
+        errors = []
+
+        def stop_after_three_sleeps(delay):
+            delays.append(delay)
+            if len(delays) == 3:
+                raise StopIteration
+
+        with self.assertRaises(StopIteration):
+            sampler.run_forever(sleep=stop_after_three_sleeps, error_writer=errors.append)
+
+        self.assertEqual(delays, [1, 2, 4])
+        self.assertEqual(len(errors), 3)
+        self.assertIn("TimeoutError", errors[0])
 
 
 if __name__ == "__main__":
