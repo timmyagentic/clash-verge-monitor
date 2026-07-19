@@ -92,17 +92,26 @@ https://github.com/timmyagentic/clash-verge-traffic-ledger
 | CLI `run` | 已完成 | 前台持续采样并写库 |
 | CLI `today` | 已完成 | 输出当天按进程或主机的汇总 |
 | CLI `export` | 已完成 | 导出 Markdown 或 CSV |
-| 单元测试 | 已完成 | 覆盖解析、增量、`lsof`、存储和导出 |
+| CLI `status` | 已完成 | 显示数据库、launchd 采样器状态、最后采样时间、原始明细行数和今日总量 |
+| CLI `anomalies` | 已完成 | 按高流量、未知进程占比和前日突增给出异常提示 |
+| CLI `web` | 已完成 | 提供本机只读 Web dashboard，含汇总、7 日趋势、异常提示、进程和主机表 |
+| CLI `prune` | 已完成 | 删除指定日期之前的 raw delta 明细，保留 daily rollup |
+| CLI `compact` | 已完成 | 压缩指定日期之前的 raw delta 明细，并报告保留的 rollup 日期 |
+| launchd 安装/卸载 | 已完成 | 生成并加载 per-user LaunchAgent，让采样器登录后自动运行 |
+| 单元测试 | 已完成 | 覆盖解析、增量、`lsof`、存储、导出、服务、状态、异常、Web dashboard 和压缩 |
 
 ## 已验证结果
 
-在这台 Mac 上已经验证：
+2026-07-19 18:07（CST）在这台 Mac 上的实机快照：
 
-- 单元测试 8 个全部通过。
+- 单元测试 18 个全部通过。
 - `python -m clash_verge_traffic_ledger doctor` 可以访问 Clash Verge 的 unix socket。
-- 当前 Mihomo 核心返回版本 `alpha-0ddf4bb`。
-- 最近一次检查看到 30 条连接，其中 19 条可以归因到具体进程。
-- 短采样 smoke test 能生成 SQLite 记录，并通过 `today` 输出日报。
+- Mihomo 核心返回版本 `alpha-0ddf4bb`。
+- 检查时共有 88 条连接，其中 48 条可以归因到具体进程。
+- launchd sampler 和本机 Web dashboard 均在运行，账本最新采样时间为 `2026-07-19T18:07:29+08:00`。
+- 当日已累计 `2.58 GiB`，`status`、`anomalies` 和 dashboard 均可读取同一 SQLite 账本。
+
+连接数、归因率和当日流量是运行时数据，后续会随机器状态变化。
 
 ## 使用方式
 
@@ -113,6 +122,10 @@ cd /Users/timmy/Projects/clash-verge-traffic-ledger
 PYTHONPATH=src python3 -m clash_verge_traffic_ledger doctor
 PYTHONPATH=src python3 -m clash_verge_traffic_ledger run --interval 1
 PYTHONPATH=src python3 -m clash_verge_traffic_ledger today
+PYTHONPATH=src python3 -m clash_verge_traffic_ledger status
+PYTHONPATH=src python3 -m clash_verge_traffic_ledger anomalies
+PYTHONPATH=src python3 -m clash_verge_traffic_ledger web --port 8765
+PYTHONPATH=src python3 -m clash_verge_traffic_ledger compact --before 2026-07-01 --dry-run
 ```
 
 安装后运行：
@@ -124,6 +137,9 @@ python -m pip install -e .
 clash-verge-traffic-ledger doctor
 clash-verge-traffic-ledger run --interval 1
 clash-verge-traffic-ledger today
+clash-verge-traffic-ledger status
+clash-verge-traffic-ledger anomalies
+clash-verge-traffic-ledger web --port 8765
 ```
 
 默认数据库位置是当前工作目录下：
@@ -137,12 +153,12 @@ data/ledger.sqlite
 这个 MVP 有几个明确边界：
 
 - 它只统计启动采样之后的未来流量，不能补算旧日志里的精确历史流量。
-- 它目前是前台 CLI 工具，还没有 launchd 常驻服务。
-- 它目前没有 Web UI 或菜单栏 UI。
+- 它已有 launchd 安装/卸载命令，但还没有图形化安装器。
+- 它已有本机只读 Web UI，但还没有菜单栏 UI。
 - 它依赖 Mihomo metadata 和 `lsof` 做进程归因，TUN 场景下部分连接可能仍然显示为 `unknown`。
-- 它还没有做异常检测规则，只提供可靠的基础账本数据。
+- 它已有基础异常提示，但还没有长期趋势建模或可配置规则集。
 
-这些边界是有意保留的。第一版先证明“连接采样、增量计算、进程归因、SQLite 汇总”这条主链路可靠，再决定是否做 UI、后台服务和异常检测。
+这些边界是有意保留的。第一版先证明“连接采样、增量计算、进程归因、SQLite 汇总”这条主链路可靠；当前阶段已经在这条主链路上补了常驻采样、状态查询、异常提示、本机只读展示和 raw 明细压缩。
 
 ## 为什么 MVP 先做 CLI + SQLite
 
@@ -151,19 +167,19 @@ CLI + SQLite 的组合适合这个阶段，原因是：
 - 不需要引入 Web 框架，项目复杂度低。
 - SQLite 适合本机账本数据，易备份、易查询、易迁移。
 - CLI 可以直接跑在当前 Mac 上验证真实 Clash Verge 环境。
-- 后续 Web UI、菜单栏、launchd 都可以复用同一套采样和数据库层。
+- 后续菜单栏、趋势图和更完整的异常规则都可以复用同一套采样和数据库层。
 
 MVP 的重点不是视觉展示，而是把流量数据采准、存稳、能查。
 
-## 后续优先级
+## 非 MVP 后续优先级
 
-建议下一阶段按这个顺序推进：
+当前本地 CLI/SQLite/Web MVP 已收口。后续如果要从 MVP 走向更完整产品，可以按这个顺序推进：
 
-1. 增加 launchd plist 和安装/卸载命令，让采样器开机或登录后自动运行。
-2. 增加 `status` 命令，显示采样器是否在运行、数据库最后写入时间、今日总量。
-3. 增加 `anomalies` 命令，按应用、主机、突增流量和未知进程比例做异常提示。
-4. 增加简单 Web UI，只读展示 daily process、daily host 和趋势图。
-5. 增加保留策略，例如按天压缩 raw delta 或清理旧明细。
+1. 实机安装并长期观察 launchd sampler 的稳定性和资源占用。
+2. 为异常规则增加配置文件和多日趋势基线。
+3. 为 Web UI 增加更长时间范围、筛选和导出入口。
+4. 评估菜单栏入口或打包成轻量 macOS app。
+5. 增加数据库迁移版本号和更正式的发布流程。
 
 ## 项目判断
 

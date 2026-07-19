@@ -68,9 +68,16 @@ SQLite tables:
 - `run`: starts polling and writing SQLite until interrupted.
 - `today`: prints process and host rollups for the current date.
 - `export`: writes Markdown or CSV for a chosen date.
+- `status`: prints database status, sampler service state, latest sample time, raw row count, and daily totals.
+- `anomalies`: prints high-usage, unknown-process-ratio, and process-spike hints.
+- `web`: serves a local read-only dashboard with summary cards, 7-day trend, anomaly hints, process totals, and host totals.
+- `prune`: deletes raw delta rows before a chosen date while preserving daily rollups.
+- `compact`: compacts raw delta rows before a chosen date and reports preserved rollup dates.
+- `install-service` / `uninstall-service`: writes and manages a per-user launchd sampler plist.
 
 ## Acceptance criteria
 
 - Unit tests cover connection parsing, delta computation, `lsof` parsing, SQLite rollups, and report export.
+- Unit tests cover service plist generation, service state parsing, status summaries, anomaly detection, Web dashboard rendering, and raw-detail compaction.
 - `doctor` can query the current Clash Verge/Mihomo unix socket on this machine.
-- A short live sampling run creates a SQLite database and a readable `today` report.
+- A short live sampling run creates a SQLite database and readable `today`, `status`, `anomalies`, and Web dashboard output.

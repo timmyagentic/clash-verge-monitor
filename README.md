@@ -31,6 +31,8 @@ This repo intentionally keeps the first version small and local. It borrows prov
 - Attribute process from Mihomo metadata first, then use an `lsof` fallback for localhost proxy connections.
 - Store raw deltas and daily rollups in SQLite.
 - Provide CLI commands for `doctor`, `run`, `today`, and `export`.
+- Install or remove a per-user `launchd` sampler service.
+- Print database and sampler status, anomaly hints, a read-only local Web dashboard, and prune or compact old raw deltas.
 
 ## Quick start
 
@@ -53,6 +55,11 @@ python -m clash_verge_traffic_ledger run --interval 1 --database data/ledger.sql
 python -m clash_verge_traffic_ledger today --database data/ledger.sqlite
 python -m clash_verge_traffic_ledger export --date 2026-07-02 --format markdown --output report.md
 python -m clash_verge_traffic_ledger export --date 2026-07-02 --format csv --output report.csv
+python -m clash_verge_traffic_ledger status --database data/ledger.sqlite
+python -m clash_verge_traffic_ledger anomalies --database data/ledger.sqlite
+python -m clash_verge_traffic_ledger web --database data/ledger.sqlite --port 8765
+python -m clash_verge_traffic_ledger prune --database data/ledger.sqlite --before 2026-07-01 --dry-run
+python -m clash_verge_traffic_ledger compact --database data/ledger.sqlite --before 2026-07-01 --dry-run
 ```
 
 For HTTP controller mode:
@@ -61,8 +68,19 @@ For HTTP controller mode:
 python -m clash_verge_traffic_ledger doctor --controller http://127.0.0.1:9090 --secret "$MIHOMO_SECRET"
 ```
 
+To install a login-time sampler on macOS:
+
+```bash
+python -m clash_verge_traffic_ledger install-service --database data/ledger.sqlite --interval 1
+python -m clash_verge_traffic_ledger uninstall-service
+```
+
+Use `--no-load` to write the LaunchAgent plist without starting it immediately.
+`status` checks the default service label with read-only `launchctl print`; pass
+`--no-service-check` to report database-only status.
+
 ## Limits
 
 - This records future traffic only. It cannot recover exact bytes from old Clash Verge logs that lack byte counters.
 - Process attribution depends on Mihomo process metadata and `lsof`; TUN traffic without process metadata may remain `unknown`.
-- The MVP is a CLI/local SQLite tool. A Web UI can be added after the accounting model is proven.
+- The Web UI is intentionally read-only and local. It shows summary cards, a 7-day trend, anomaly hints, process totals, and host totals. The authoritative data remains in SQLite.
