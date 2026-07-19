@@ -8,12 +8,14 @@ This run verifies the `clash-verge-traffic-auditor` Skill, deterministic JSON ru
 
 ## Automated Evidence
 
-- `PYTHONPATH=src python3 -m unittest discover -s tests -v`: 30 tests passed.
+- `PYTHONPATH=src python3 -m unittest discover -s tests -v`: 33 tests passed.
 - Official `skill-creator/scripts/quick_validate.py`: Skill valid.
 - Temporary bootstrap dry run: no directories written.
 - Temporary first and repeated install: same runtime path and original `installed_at`.
 - Copied Skill directory: successfully invoked the versioned runtime without repository `PYTHONPATH`.
 - Secret fixture: value absent from generated plist; only its mode-600 file path was present.
+- Real bootstrap with `--load`: installed `runtime/0.2.0`, adopted the existing database in place, and backed up both previous plists.
+- Post-install status: sampler and Web LaunchAgents both `running` from the stable runtime; dashboard returned HTTP 200.
 
 ## Live Read-only Evidence
 

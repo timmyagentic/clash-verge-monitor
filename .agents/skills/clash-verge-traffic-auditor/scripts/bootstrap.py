@@ -107,6 +107,18 @@ def validate_secret_file(value: str | None) -> Path | None:
     return path
 
 
+def parse_launchctl_output(output: str) -> dict[str, str | None]:
+    state = None
+    plist = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        if state is None and stripped.startswith("state ="):
+            state = stripped.split("=", 1)[1].strip()
+        elif plist is None and stripped.startswith("path ="):
+            plist = stripped.split("=", 1)[1].strip()
+    return {"state": state or "loaded", "plist": plist}
+
+
 def launchctl_details(label: str) -> dict[str, str | None]:
     completed = subprocess.run(
         ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
@@ -116,15 +128,7 @@ def launchctl_details(label: str) -> dict[str, str | None]:
     )
     if completed.returncode != 0:
         return {"state": "not loaded", "plist": None}
-    state = "loaded"
-    plist = None
-    for line in completed.stdout.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("state ="):
-            state = stripped.split("=", 1)[1].strip()
-        elif stripped.startswith("path ="):
-            plist = stripped.split("=", 1)[1].strip()
-    return {"state": state, "plist": plist}
+    return parse_launchctl_output(completed.stdout)
 
 
 def launchctl_state(label: str) -> str:

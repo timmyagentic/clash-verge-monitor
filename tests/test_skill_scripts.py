@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import plistlib
@@ -61,7 +62,39 @@ def seed_database(path):
     )
 
 
+def load_bootstrap_module():
+    script_dir = str(BOOTSTRAP.parent)
+    sys.path.insert(0, script_dir)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "traffic_auditor_bootstrap",
+            BOOTSTRAP,
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("could not load bootstrap module")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(script_dir)
+
+
 class BootstrapScriptTests(unittest.TestCase):
+    def test_launchctl_parser_uses_top_level_job_state(self):
+        bootstrap = load_bootstrap_module()
+        details = bootstrap.parse_launchctl_output(
+            """
+            path = /tmp/example.plist
+            state = running
+            coalition = {
+                state = active
+            }
+            """
+        )
+
+        self.assertEqual(details["state"], "running")
+        self.assertEqual(details["plist"], "/tmp/example.plist")
+
     def test_install_dry_run_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
