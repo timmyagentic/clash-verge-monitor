@@ -80,6 +80,16 @@ def load_bootstrap_module():
 
 
 class BootstrapScriptTests(unittest.TestCase):
+    def test_source_modified_includes_untracked_files(self):
+        bootstrap = load_bootstrap_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=source, check=True)
+
+            self.assertFalse(bootstrap.source_modified(source))
+            (source / "untracked.py").write_text("value = 1\n", encoding="utf-8")
+            self.assertTrue(bootstrap.source_modified(source))
+
     def test_launchctl_parser_uses_top_level_job_state(self):
         bootstrap = load_bootstrap_module()
         details = bootstrap.parse_launchctl_output(

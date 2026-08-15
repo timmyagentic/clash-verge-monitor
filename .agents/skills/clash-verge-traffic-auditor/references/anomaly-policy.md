@@ -1,6 +1,6 @@
 # Anomaly Policy
 
-The runtime uses deterministic policy version 1. It does not ask a model to classify traffic.
+The runtime uses deterministic policy version 2. It does not ask a model to classify traffic.
 
 ## Windows And Coverage
 
@@ -16,10 +16,14 @@ The runtime uses deterministic policy version 1. It does not ask a model to clas
 - `process_spike` / `host_spike`: current daily average is at least 3x baseline and exceeds a median/MAD robust limit.
 - `sustained_*_spike`: the robust spike limit is exceeded on at least 3 window days.
 - `*_upload_spike`: at least 200 MiB uploaded and the robust upload baseline is exceeded by at least 3x.
-- `unknown_process_ratio`: unknown process bytes are at least 25% of window traffic; 75% or more is critical.
+- `unknown_process_ratio`: attribution coverage diagnostic emitted only when
+  unknown process bytes are both at least 100 MiB and at least 25% of window
+  traffic. It is `info` when the gap is chronic and `warning` only when the
+  ratio materially worsens from baseline. It is never a standalone traffic or
+  security anomaly and never becomes `critical` solely because of its ratio.
 
 The median absolute deviation is scaled by 1.4826. A minimum absolute daily margin prevents tiny baselines from generating noisy ratios.
 
 ## Interpretation Limits
 
-A case proves that a configured statistical or absolute condition occurred. It does not prove malware, exfiltration, or policy violation. Process names and hosts are local evidence only; inspect counterparties and timestamps before assigning a cause. Compacted raw rows can limit evidence detail while preserving rollup-level findings.
+A case proves that a configured statistical or absolute condition occurred. It does not prove malware, exfiltration, or policy violation. Process names and hosts are local evidence only; inspect counterparties, source addresses, per-connection sizes, and timing before assigning a cause. Compacted raw rows can limit evidence detail while preserving rollup-level findings.

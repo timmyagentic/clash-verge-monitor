@@ -12,9 +12,25 @@ The default Clash Verge socket is `/tmp/verge/verge-mihomo.sock`. Start Clash Ve
 
 Compare `database.latest_sample`, `database.sample_age_seconds`, sampler state, and controller reachability. The sampler now retries transient socket and timeout errors with bounded exponential backoff. Inspect the stable `logs/sampler.err.log` before restarting it.
 
+## Degraded Process Attribution
+
+Compare live health `controller.attribution`, audit
+`coverage.process_attribution`, and evidence `source_breakdown`. The runtime
+captures at most one TCP/UDP `lsof` socket table after a controller snapshot
+that still needs fallback attribution, matches by
+protocol and local port for TUN virtual source addresses, and reuses the last
+known process for the lifetime of a connection. Ambiguous ports and connections
+without a visible local socket intentionally remain `unknown`; never assign the
+Mihomo core process as the originating app.
+
 ## SQLite Busy Or Locked
 
 Audit opens SQLite in `mode=ro`, enables query-only mode, and waits up to 30 seconds for a busy writer. Retry only after reading the error and confirming the sampler is making progress. Do not stop the sampler or copy the 1 GB database merely to hide a repeated locking problem.
+
+Applied `compact` maintenance deletes the selected raw rows and then runs
+SQLite `VACUUM` to reclaim file bytes. It preserves daily rollups but may need
+temporary free disk space comparable to the database size. Keep it dry-run
+until the user explicitly confirms the cutoff and data loss.
 
 ## Insufficient Baseline
 

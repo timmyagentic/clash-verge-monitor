@@ -57,7 +57,7 @@ Read [anomaly-policy.md](references/anomaly-policy.md) when explaining threshold
 
 ## Maintenance And Uninstall
 
-Keep maintenance read-only until the user confirms a specific mutation. Show row counts and preserved rollups first. Prefer compaction over raw deletion because compaction retains daily aggregates.
+Keep maintenance read-only until the user confirms a specific mutation. Show row counts and preserved rollups first. Prefer compaction when file-space recovery is required: it retains daily aggregates, deletes the selected raw evidence, and runs SQLite `VACUUM`.
 
 ```bash
 python3 scripts/traffic_auditor.py maintain --before <YYYY-MM-DD> --mode compact --dry-run --pretty

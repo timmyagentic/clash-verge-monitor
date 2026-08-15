@@ -6,7 +6,7 @@ from pathlib import PurePath
 from typing import Any, Callable
 
 
-ProcessLookup = Callable[[int], str | None]
+ProcessLookup = Callable[[str, int, str], str | None]
 
 
 def _to_int(value: Any, default: int = 0) -> int:
@@ -47,17 +47,22 @@ class ConnectionSnapshot:
         item: dict[str, Any],
         process_lookup: ProcessLookup | None = None,
     ) -> "ConnectionSnapshot":
-        metadata = item.get("metadata") or {}
+        raw_metadata = item.get("metadata")
+        metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
         source_ip = str(metadata.get("sourceIP") or "")
         source_port = _to_int(metadata.get("sourcePort"))
         destination_ip = str(metadata.get("destinationIP") or "")
         destination_port = _to_int(metadata.get("destinationPort"))
 
         process = str(metadata.get("process") or "").strip()
+        if process.lower() == "unknown":
+            process = ""
         if not process:
             process = _basename(str(metadata.get("processPath") or ""))
-        if not process and process_lookup and source_ip == "127.0.0.1" and source_port:
-            process = (process_lookup(source_port) or "").strip()
+        network = str(metadata.get("network") or "").strip().lower()
+        lookup_network = network or "tcp"
+        if not process and process_lookup and source_port and lookup_network in {"tcp", "udp"}:
+            process = (process_lookup(source_ip, source_port, lookup_network) or "").strip()
         if not process:
             process = "unknown"
 
@@ -75,7 +80,7 @@ class ConnectionSnapshot:
             source_ip=source_ip,
             source_port=source_port,
             destination_port=destination_port,
-            network=str(metadata.get("network") or ""),
+            network=network,
             connection_type=str(metadata.get("type") or ""),
             chains=[str(chain) for chain in chains],
             rule=str(item.get("rule") or item.get("rulePayload") or ""),
@@ -99,4 +104,3 @@ class TrafficDelta:
     rule: str
     upload_bytes: int
     download_bytes: int
-
