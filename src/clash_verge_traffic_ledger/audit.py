@@ -5,14 +5,14 @@ import re
 import statistics
 from dataclasses import asdict, dataclass
 from datetime import date as Date
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .contracts import action_item, warning_item
 from .store import LedgerStore
 
 
-POLICY_VERSION = 1
+POLICY_VERSION = 2
 DEFAULT_WINDOW_DAYS = 7
 DEFAULT_BASELINE_DAYS = 30
 MIN_BASELINE_DAYS = 7
@@ -20,6 +20,7 @@ DEFAULT_ABSOLUTE_DAILY_BYTES = 500 * 1024 * 1024
 DEFAULT_MIN_SPIKE_BYTES = 500 * 1024 * 1024
 DEFAULT_MIN_UPLOAD_SPIKE_BYTES = 200 * 1024 * 1024
 DEFAULT_UNKNOWN_RATIO = 0.25
+DEFAULT_MIN_UNKNOWN_BYTES = 100 * 1024 * 1024
 DEFAULT_SPIKE_RATIO = 3.0
 
 _CASE_ID_PATTERN = re.compile(
@@ -164,6 +165,81 @@ def _baseline_limitations(active_days: int, requested_days: int) -> list[str]:
             f"The requested {requested_days}-day baseline contains {active_days} active traffic days."
         )
     return limitations
+
+
+def _audit_freshness(
+    store: LedgerStore,
+    end_date: str,
+    *,
+    now: datetime | None,
+    max_sample_age_seconds: float,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    timestamp = now or datetime.now().astimezone()
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    latest_sample = store.latest_delta_timestamp()
+    latest_date: str | None = None
+    sample_age_seconds: float | None = None
+    if latest_sample:
+        sampled_at = datetime.fromisoformat(latest_sample)
+        if sampled_at.tzinfo is None:
+            sampled_at = sampled_at.replace(tzinfo=timezone.utc)
+        latest_date = sampled_at.astimezone(timestamp.tzinfo).date().isoformat()
+        sample_age_seconds = max(
+            0.0,
+            (timestamp.astimezone(timezone.utc) - sampled_at.astimezone(timezone.utc)).total_seconds(),
+        )
+
+    today = timestamp.date().isoformat()
+    warnings: list[dict[str, Any]] = []
+    if end_date == today and latest_date == end_date:
+        window_end_status = "partial"
+        warnings.append(
+            warning_item(
+                "partial_window_day",
+                "The audit window includes the current partial day.",
+                observed_through=latest_sample,
+            )
+        )
+        if sample_age_seconds is not None and sample_age_seconds > max_sample_age_seconds:
+            warnings.append(
+                warning_item(
+                    "sample_stale",
+                    "The latest sample in the current audit window is stale.",
+                    max_sample_age_seconds=max_sample_age_seconds,
+                )
+            )
+    elif latest_date is None or latest_date < end_date:
+        window_end_status = "missing"
+        warnings.append(
+            warning_item(
+                "window_after_latest_sample",
+                "The requested audit window extends beyond the latest retained sample.",
+                latest_sample=latest_sample,
+            )
+        )
+        if end_date == today and sample_age_seconds is not None and sample_age_seconds > max_sample_age_seconds:
+            warnings.append(
+                warning_item(
+                    "sample_stale",
+                    "The latest sample in the current audit window is stale.",
+                    max_sample_age_seconds=max_sample_age_seconds,
+                )
+            )
+    else:
+        window_end_status = "complete"
+
+    return (
+        {
+            "latest_sample": latest_sample,
+            "sample_age_seconds": round(sample_age_seconds, 3)
+            if sample_age_seconds is not None
+            else None,
+            "window_end_status": window_end_status,
+            "observed_through": end_date if window_end_status == "complete" else latest_sample,
+        },
+        warnings,
+    )
 
 
 def _make_case(
@@ -386,7 +462,10 @@ def audit_traffic(
     min_spike_bytes: int = DEFAULT_MIN_SPIKE_BYTES,
     min_upload_spike_bytes: int = DEFAULT_MIN_UPLOAD_SPIKE_BYTES,
     unknown_ratio_threshold: float = DEFAULT_UNKNOWN_RATIO,
+    min_unknown_bytes: int = DEFAULT_MIN_UNKNOWN_BYTES,
     spike_ratio: float = DEFAULT_SPIKE_RATIO,
+    now: datetime | None = None,
+    max_sample_age_seconds: float = 180.0,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     if window_days < 1 or baseline_days < 1 or case_limit < 1:
         raise ValueError("window, baseline, and case limit must be positive")
@@ -396,6 +475,12 @@ def audit_traffic(
     baseline_start, _ = _date_window(baseline_end, baseline_days)
     current_dates = store.active_dates(window_start, window_end)
     baseline_dates = store.active_dates(baseline_start, baseline_end)
+    freshness, freshness_warnings = _audit_freshness(
+        store,
+        window_end,
+        now=now,
+        max_sample_age_seconds=max_sample_age_seconds,
+    )
 
     current_process = _subject_map(store.subject_daily("process", window_start, window_end))
     baseline_process = _subject_map(store.subject_daily("process", baseline_start, baseline_end))
@@ -457,7 +542,10 @@ def audit_traffic(
     baseline_unknown_ratio = (
         baseline_unknown_total / baseline_process_total if baseline_process_total else 0.0
     )
-    if current_process_total and unknown_ratio >= unknown_ratio_threshold:
+    attribution_degraded = bool(
+        unknown_total >= min_unknown_bytes and unknown_ratio >= unknown_ratio_threshold
+    )
+    if attribution_degraded:
         baseline_stats = _stats(
             _values(
                 baseline_process.get("unknown", {}),
@@ -467,7 +555,18 @@ def audit_traffic(
             max(len(current_dates), 1),
         )
         baseline_stats["unknown_ratio"] = round(baseline_unknown_ratio, 6)
-        severity = "critical" if unknown_ratio >= 0.75 else "warning"
+        materially_worsened = bool(
+            (baseline_process_total == 0 and unknown_ratio >= unknown_ratio_threshold)
+            or (
+                baseline_process_total > 0
+                and unknown_ratio - baseline_unknown_ratio >= 0.10
+                and (
+                    baseline_unknown_ratio == 0
+                    or unknown_ratio / baseline_unknown_ratio >= 1.25
+                )
+            )
+        )
+        severity = "warning" if materially_worsened else "info"
         cases.append(
             _make_case(
                 code="unknown_process_ratio",
@@ -511,7 +610,7 @@ def audit_traffic(
     )
     total_case_count = len(cases)
     cases = cases[:case_limit]
-    warnings: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = list(freshness_warnings)
     next_actions: list[dict[str, Any]] = []
     if not current_dates:
         warnings.append(warning_item("no_window_data", "No traffic rollups exist in the requested window."))
@@ -534,10 +633,31 @@ def audit_traffic(
             )
         )
 
-    alert_cases = [case for case in cases if case.severity in {"warning", "critical"}]
+    if attribution_degraded:
+        warnings.append(
+            warning_item(
+                "process_attribution_degraded",
+                "A significant share of traffic could not be attributed to a process.",
+                unknown_ratio=round(unknown_ratio, 6),
+                unknown_bytes=unknown_total,
+            )
+        )
+        next_actions.append(
+            action_item(
+                "inspect_process_attribution",
+                "Inspect source endpoints and unknown-process evidence before interpreting process totals.",
+            )
+        )
+
+    alert_cases = [
+        case
+        for case in cases
+        if case.code != "unknown_process_ratio" and case.severity in {"warning", "critical"}
+    ]
     if alert_cases:
         verdict = "anomalies_detected"
-        next_actions.append(
+        next_actions.insert(
+            0,
             action_item(
                 "inspect_case",
                 "Run evidence for the highest-severity case before drawing a conclusion.",
@@ -579,7 +699,12 @@ def audit_traffic(
     data = {
         "policy_version": POLICY_VERSION,
         "verdict": verdict,
-        "window": {"start": window_start, "end": window_end, "days": window_days},
+        "window": {
+            "start": window_start,
+            "end": window_end,
+            "days": window_days,
+            "observed_through": freshness["observed_through"],
+        },
         "baseline_window": {
             "start": baseline_start,
             "end": baseline_end,
@@ -589,6 +714,15 @@ def audit_traffic(
             "active_window_days": len(current_dates),
             "active_baseline_days": len(baseline_dates),
             "available_rollups": store.rollup_bounds(),
+            **freshness,
+            "process_attribution": {
+                "status": "degraded" if attribution_degraded else "healthy",
+                "known_bytes": current_process_total - unknown_total,
+                "unknown_bytes": unknown_total,
+                "unknown_ratio": round(unknown_ratio, 6),
+                "minimum_unknown_bytes": min_unknown_bytes,
+                "maximum_unknown_ratio": unknown_ratio_threshold,
+            },
         },
         "summary": {
             "total_bytes": current_process_total,
@@ -625,6 +759,8 @@ def build_evidence(
     *,
     limit: int = 20,
 ) -> dict[str, Any]:
+    if limit < 1:
+        raise ValueError("evidence limit must be positive")
     subject_type = str(case["subject"]["type"])
     subject = str(case["subject"]["value"])
     window_start = str(case["window"]["start"])
@@ -644,6 +780,20 @@ def build_evidence(
         window_end,
         limit=limit,
     )
+    source_breakdown = store.evidence_source_breakdown(
+        subject_type,
+        subject,
+        window_start,
+        window_end,
+        limit=limit,
+    )
+    connection_pattern = store.evidence_connection_pattern(
+        subject_type,
+        subject,
+        window_start,
+        window_end,
+        limit=limit,
+    )
     limitations = list(case.get("limitations") or [])
     raw_bounds = store.raw_bounds()
     if not breakdown:
@@ -655,6 +805,8 @@ def build_evidence(
         "case": case,
         "daily_series": series,
         "top_counterparties": breakdown,
+        "source_breakdown": source_breakdown,
+        "connection_pattern": connection_pattern,
         "raw_evidence_bounds": raw_bounds,
         "limitations": list(dict.fromkeys(limitations)),
     }

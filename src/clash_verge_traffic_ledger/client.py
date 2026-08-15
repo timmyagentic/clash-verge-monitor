@@ -4,13 +4,24 @@ import http.client
 import json
 import socket
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from .models import ConnectionSnapshot, ProcessLookup
 
 
 DEFAULT_UNIX_SOCKET = "/tmp/verge/verge-mihomo.sock"
+
+
+def needs_process_lookup(items: list[dict[str, Any]]) -> bool:
+    for item in items:
+        raw_metadata = item.get("metadata")
+        metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+        process = str(metadata.get("process") or "").strip()
+        process_path = str(metadata.get("processPath") or "").strip()
+        if (not process or process.lower() == "unknown") and not process_path:
+            return True
+    return False
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -100,12 +111,17 @@ class MihomoClient:
     def connection_snapshots(
         self,
         process_lookup: ProcessLookup | None = None,
+        process_lookup_factory: Callable[[], ProcessLookup] | None = None,
     ) -> list[ConnectionSnapshot]:
         payload = self.raw_connections()
-        items = payload.get("connections") or []
+        items = [item for item in (payload.get("connections") or []) if isinstance(item, dict)]
+        if (
+            process_lookup is None
+            and process_lookup_factory is not None
+            and needs_process_lookup(items)
+        ):
+            process_lookup = process_lookup_factory()
         return [
             ConnectionSnapshot.from_api_item(item, process_lookup=process_lookup)
             for item in items
-            if isinstance(item, dict)
         ]
-

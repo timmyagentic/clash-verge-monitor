@@ -82,6 +82,17 @@ def source_revision(source: Path) -> str | None:
     return completed.stdout.strip() if completed.returncode == 0 else None
 
 
+def source_modified(source: Path) -> bool | None:
+    completed = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=source,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return bool(completed.stdout.strip()) if completed.returncode == 0 else None
+
+
 def validate_source(source: Path | None) -> Path:
     if not source:
         raise FileNotFoundError(
@@ -393,6 +404,7 @@ def command_install(args: argparse.Namespace) -> int:
             "version": version,
             "source": str(source),
             "source_revision": source_revision(source),
+            "source_modified": source_modified(source),
             "runtime_python": str(runtime_python),
             "database": str(database),
             "controller": args.controller,

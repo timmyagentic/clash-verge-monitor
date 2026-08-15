@@ -4,24 +4,66 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .client import ControllerConfig, MihomoClient
+from .client import ControllerConfig, MihomoClient, needs_process_lookup
 from .contracts import action_item, warning_item
+from .models import ConnectionSnapshot, ProcessLookup
+from .process_lookup import capture_process_lookup
 from .service import DEFAULT_LABEL, service_state
 from .store import LedgerStore
 
 
 ControllerProbe = Callable[[ControllerConfig], dict[str, Any]]
 ServiceStateReader = Callable[[str], str]
+MIN_KNOWN_ATTRIBUTION_RATIO = 0.75
+
+
+def summarize_attribution(
+    connections: list[dict[str, Any]],
+    *,
+    process_lookup: ProcessLookup | None = None,
+) -> dict[str, Any]:
+    snapshots = [
+        ConnectionSnapshot.from_api_item(item, process_lookup=process_lookup)
+        for item in connections
+        if isinstance(item, dict)
+    ]
+    total = len(snapshots)
+    known = sum(snapshot.process != "unknown" for snapshot in snapshots)
+    unknown = total - known
+    known_ratio = known / total if total else 1.0
+    source_counts: dict[str, int] = {}
+    for snapshot in snapshots:
+        source = snapshot.source_ip or "unknown"
+        source_counts[source] = source_counts.get(source, 0) + 1
+    return {
+        "known_connections": known,
+        "unknown_connections": unknown,
+        "known_ratio": round(known_ratio, 6),
+        "status": "healthy" if not total or known_ratio >= MIN_KNOWN_ATTRIBUTION_RATIO else "degraded",
+        "minimum_known_ratio": MIN_KNOWN_ATTRIBUTION_RATIO,
+        "sources": [
+            {"source_ip": source, "connection_count": count}
+            for source, count in sorted(source_counts.items(), key=lambda item: (-item[1], item[0]))
+        ],
+    }
 
 
 def probe_controller(config: ControllerConfig) -> dict[str, Any]:
     client = MihomoClient(config)
     version = client.version()
-    connections = client.raw_connections().get("connections") or []
+    connections = [
+        item for item in (client.raw_connections().get("connections") or []) if isinstance(item, dict)
+    ]
+    process_lookup = (
+        capture_process_lookup(timeout=min(config.timeout, 2.0))
+        if needs_process_lookup(connections)
+        else None
+    )
     return {
         "reachable": True,
         "version": version,
         "connection_count": len(connections),
+        "attribution": summarize_attribution(connections, process_lookup=process_lookup),
     }
 
 
@@ -111,6 +153,25 @@ def inspect_health(
             )
             next_actions.append(action_item("start_clash_verge", "Start Clash Verge and retry the health check."))
 
+    attribution = controller_data.get("attribution")
+    attribution_ready = True
+    if isinstance(attribution, dict) and attribution.get("status") == "degraded":
+        attribution_ready = False
+        warnings.append(
+            warning_item(
+                "process_attribution_degraded",
+                "Live traffic is being sampled, but too few connections can be attributed to a process.",
+                known_ratio=attribution.get("known_ratio"),
+                minimum_known_ratio=attribution.get("minimum_known_ratio", MIN_KNOWN_ATTRIBUTION_RATIO),
+            )
+        )
+        next_actions.append(
+            action_item(
+                "inspect_process_attribution",
+                "Inspect TUN source endpoints, lsof availability, and unknown-process evidence.",
+            )
+        )
+
     if database_data["readable"] and not database_data["fresh"]:
         warnings.append(
             warning_item(
@@ -124,7 +185,7 @@ def inspect_health(
     service_ready = not service_label or sampler_data["state"] == "running"
     controller_ready = not check_controller or controller_data["reachable"] is True
     sampling_ready = bool(database_data["fresh"] and service_ready and controller_ready)
-    if sampling_ready:
+    if sampling_ready and attribution_ready:
         status = "healthy"
     elif audit_ready:
         status = "degraded"
@@ -136,6 +197,7 @@ def inspect_health(
             "status": status,
             "audit_ready": audit_ready,
             "sampling_ready": sampling_ready,
+            "attribution_ready": attribution_ready,
             "database": database_data,
             "sampler": sampler_data,
             "controller": controller_data,

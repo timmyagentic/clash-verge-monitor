@@ -14,7 +14,7 @@ from .audit import (
     find_case,
 )
 from .anomalies import detect_anomalies, format_anomalies
-from .client import ControllerConfig, DEFAULT_UNIX_SOCKET, MihomoClient
+from .client import ControllerConfig, DEFAULT_UNIX_SOCKET, MihomoClient, needs_process_lookup
 from .contracts import (
     EXIT_DATA_ERROR,
     EXIT_OK,
@@ -23,9 +23,9 @@ from .contracts import (
     error_item,
     render_json,
 )
-from .health import inspect_health
+from .health import inspect_health, summarize_attribution
 from .monitor import Sampler
-from .process_lookup import lookup_process_name, lsof_path
+from .process_lookup import capture_process_lookup, lsof_path
 from .reports import export_csv, export_markdown, format_report
 from .service import (
     DEFAULT_LABEL,
@@ -92,19 +92,28 @@ def command_doctor(args: argparse.Namespace) -> int:
     try:
         version = client.version()
         raw_connections = client.raw_connections()
-        snapshots = client.connection_snapshots(process_lookup=lookup_process_name)
+        items = [
+            item for item in (raw_connections.get("connections") or []) if isinstance(item, dict)
+        ]
+        process_lookup = (
+            capture_process_lookup(timeout=min(args.timeout, 2.0))
+            if needs_process_lookup(items)
+            else None
+        )
+        attribution = summarize_attribution(items, process_lookup=process_lookup)
     except Exception as exc:
         print(f"controller: failed ({exc})", file=sys.stderr)
         return 1
 
-    total = len(raw_connections.get("connections") or [])
-    known = sum(1 for item in snapshots if item.process != "unknown")
+    total = len(items)
+    known = int(attribution["known_connections"])
     lsof = lsof_path()
 
     print(f"controller: ok ({args.controller})")
     print(f"version: {version}")
     print(f"connections: {total}")
     print(f"process attribution: {known}/{total} known")
+    print(f"attribution status: {attribution['status']}")
     print(f"lsof: {lsof or 'not found'}")
     return 0
 
@@ -377,9 +386,9 @@ def command_web(args: argparse.Namespace) -> int:
 
 
 def command_prune(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=not args.apply)
     count = store.raw_delta_count_before(args.before)
-    if args.dry_run:
+    if not args.apply:
         print(f"would delete {count} raw delta rows before {args.before}")
         return 0
     deleted = store.delete_raw_before(args.before)
@@ -388,19 +397,21 @@ def command_prune(args: argparse.Namespace) -> int:
 
 
 def command_compact(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=not args.apply)
     count = store.raw_delta_count_before(args.before)
-    if args.dry_run:
+    if not args.apply:
         print(f"would compact {count} raw delta rows before {args.before}")
         return 0
     result = store.compact_raw_before(args.before)
     print(
         "compacted {deleted} raw delta rows before {before}; "
-        "{remaining} raw rows remain; {dates} rollup dates preserved".format(
+        "{remaining} raw rows remain; {dates} rollup dates preserved; "
+        "reclaimed {reclaimed} bytes".format(
             deleted=result["deleted_raw_rows"],
             before=args.before,
             remaining=result["remaining_raw_rows"],
             dates=result["preserved_rollup_dates"],
+            reclaimed=result["reclaimed_bytes"],
         )
     )
     return 0
@@ -554,16 +565,23 @@ def build_parser() -> argparse.ArgumentParser:
     web.add_argument("--port", type=int, default=8765)
     web.set_defaults(func=command_web)
 
-    prune = subparsers.add_parser("prune", help="Delete raw delta rows before a date")
+    prune = subparsers.add_parser("prune", help="Plan or apply raw delta deletion")
     add_database_arg(prune)
     prune.add_argument("--before", required=True, help="Delete raw rows older than this YYYY-MM-DD date")
-    prune.add_argument("--dry-run", action="store_true")
+    prune_mode = prune.add_mutually_exclusive_group()
+    prune_mode.add_argument("--apply", action="store_true", help="Apply the destructive deletion")
+    prune_mode.add_argument("--dry-run", action="store_true", help="Preview only (the default)")
     prune.set_defaults(func=command_prune)
 
-    compact = subparsers.add_parser("compact", help="Compact old raw deltas while preserving rollups")
+    compact = subparsers.add_parser(
+        "compact",
+        help="Plan or apply raw compaction while preserving rollups",
+    )
     add_database_arg(compact)
     compact.add_argument("--before", required=True, help="Compact raw rows older than this YYYY-MM-DD date")
-    compact.add_argument("--dry-run", action="store_true")
+    compact_mode = compact.add_mutually_exclusive_group()
+    compact_mode.add_argument("--apply", action="store_true", help="Apply deletion and VACUUM")
+    compact_mode.add_argument("--dry-run", action="store_true", help="Preview only (the default)")
     compact.set_defaults(func=command_compact)
 
     install_service = subparsers.add_parser("install-service", help="Install a launchd sampler service")

@@ -6,14 +6,15 @@ from datetime import datetime
 from typing import Callable, Iterable
 
 from .client import MihomoClient
-from .models import ConnectionSnapshot, TrafficDelta
-from .process_lookup import lookup_process_name
+from .models import ConnectionSnapshot, ProcessLookup, TrafficDelta
+from .process_lookup import capture_process_lookup
 from .store import LedgerStore
 
 
 class DeltaComputer:
     def __init__(self) -> None:
         self._last: dict[str, tuple[int, int]] = {}
+        self._last_process: dict[str, str] = {}
 
     def compute(
         self,
@@ -25,6 +26,11 @@ class DeltaComputer:
 
         for snapshot in snapshots:
             seen.add(snapshot.connection_id)
+            process = snapshot.process
+            if process != "unknown":
+                self._last_process[snapshot.connection_id] = process
+            else:
+                process = self._last_process.get(snapshot.connection_id, process)
             previous = self._last.get(snapshot.connection_id)
             self._last[snapshot.connection_id] = (snapshot.upload, snapshot.download)
             if previous is None:
@@ -42,7 +48,7 @@ class DeltaComputer:
                     ts=now,
                     date=now.date().isoformat(),
                     connection_id=snapshot.connection_id,
-                    process=snapshot.process,
+                    process=process,
                     host=snapshot.host,
                     destination_ip=snapshot.destination_ip,
                     source_ip=snapshot.source_ip,
@@ -60,6 +66,7 @@ class DeltaComputer:
         for connection_id in list(self._last):
             if connection_id not in seen:
                 del self._last[connection_id]
+                self._last_process.pop(connection_id, None)
 
         return deltas
 
@@ -71,6 +78,7 @@ class Sampler:
         store: LedgerStore,
         interval: float = 1.0,
         max_backoff: float = 30.0,
+        process_lookup_factory: Callable[[], ProcessLookup] = capture_process_lookup,
     ) -> None:
         if interval <= 0:
             raise ValueError("interval must be positive")
@@ -80,11 +88,14 @@ class Sampler:
         self.store = store
         self.interval = interval
         self.max_backoff = max_backoff
+        self.process_lookup_factory = process_lookup_factory
         self.delta_computer = DeltaComputer()
 
     def sample_once(self, now: datetime | None = None) -> int:
         timestamp = now or datetime.now().astimezone()
-        snapshots = self.client.connection_snapshots(process_lookup=lookup_process_name)
+        snapshots = self.client.connection_snapshots(
+            process_lookup_factory=self.process_lookup_factory
+        )
         deltas = self.delta_computer.compute(snapshots, timestamp)
         self.store.record_deltas(deltas)
         return len(deltas)
@@ -93,15 +104,17 @@ class Sampler:
         self,
         *,
         sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
         error_writer: Callable[[str], None] | None = None,
     ) -> None:
         write_error = error_writer or (lambda message: print(message, file=sys.stderr, flush=True))
         consecutive_failures = 0
         while True:
+            started_at = monotonic()
             try:
                 self.sample_once()
                 consecutive_failures = 0
-                delay = self.interval
+                delay = max(0.0, self.interval - (monotonic() - started_at))
             except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception as exc:

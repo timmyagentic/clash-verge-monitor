@@ -8,6 +8,9 @@ from .reports import human_bytes
 from .store import LedgerStore
 
 
+DEFAULT_MIN_UNKNOWN_BYTES = 100 * 1024 * 1024
+
+
 @dataclass(frozen=True)
 class Anomaly:
     code: str
@@ -25,6 +28,7 @@ def detect_anomalies(
     byte_threshold: int,
     unknown_ratio_threshold: float,
     spike_multiplier: float,
+    min_unknown_bytes: int = DEFAULT_MIN_UNKNOWN_BYTES,
 ) -> list[Anomaly]:
     anomalies: list[Anomaly] = []
     processes = store.daily_process(date, limit=1000)
@@ -56,13 +60,20 @@ def detect_anomalies(
     unknown_total = sum(
         int(row["total_bytes"]) for row in processes if str(row["process"]).lower() == "unknown"
     )
-    if total and unknown_total / total >= unknown_ratio_threshold:
+    if (
+        total
+        and unknown_total >= min_unknown_bytes
+        and unknown_total / total >= unknown_ratio_threshold
+    ):
         percent = unknown_total / total * 100
         anomalies.append(
             Anomaly(
                 code="unknown_process_ratio",
-                severity="warning",
-                message=f"unknown process traffic is {percent:.1f}% of today's total",
+                severity="info",
+                message=(
+                    f"process attribution coverage is degraded: "
+                    f"unknown traffic is {percent:.1f}% of today's total"
+                ),
             )
         )
 

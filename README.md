@@ -6,6 +6,16 @@ The runtime records future traffic from the Mihomo controller, attributes bytes 
 
 For the full Chinese project context and current MVP status, see [docs/project-brief.zh-CN.md](docs/project-brief.zh-CN.md).
 
+## Release status
+
+The current release line is `0.3.0`, which packages the policy-v2 auditor
+hardening. Formal artifacts belong to the immutable
+[`v0.3.0` GitHub Release](https://github.com/timmyagentic/clash-verge-traffic-ledger/releases/tag/v0.3.0).
+A version in source or a local installation alone is not publication proof; see
+[CHANGELOG.md](CHANGELOG.md) for the release notes and
+[docs/releasing.md](docs/releasing.md) for the clean-source, build, publication,
+download, and deployment verification gates.
+
 ## Why this project exists
 
 Clash Verge/Mihomo logs are useful for connection history, but they usually do not preserve exact historical per-connection byte deltas. `clash-verge-traffic-ledger` records those deltas while the core is running, so daily app-level usage can be reconstructed later.
@@ -28,11 +38,11 @@ This repo intentionally keeps the first version small and local. It borrows prov
 - Poll `/connections` at a configurable interval.
 - Compute byte deltas per Mihomo connection id.
 - Treat first-seen connections as a baseline, so old bytes are not counted as new monitor usage.
-- Attribute process from Mihomo metadata first, then use an `lsof` fallback for localhost proxy connections.
+- Attribute process from Mihomo metadata first, then capture at most one TCP/UDP `lsof` socket table after each controller snapshot that still needs localhost or TUN fallback attribution.
 - Store raw deltas and daily rollups in SQLite.
 - Provide CLI commands for `doctor`, `run`, `today`, and `export`.
 - Install or remove a per-user `launchd` sampler service.
-- Print database and sampler status, anomaly hints, a read-only local Web dashboard, and prune or compact old raw deltas.
+- Print database, sampler, and attribution health; expose deterministic anomaly and evidence output; provide a read-only local Web dashboard; and prune or compact old raw deltas.
 
 ## Agent-first Skill
 
@@ -55,6 +65,10 @@ python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py au
 Installation is idempotent. `--load` is explicit because it replaces and
 restarts the per-user sampler and dashboard LaunchAgents. Uninstall and data
 maintenance also default to a dry run.
+
+The repository release and the locally installed runtime are separate states.
+Use `bootstrap.py status` to inspect the installed version and provenance; only
+deploy from a clean tagged checkout after the release artifacts are verified.
 
 ## Developer quick start
 
@@ -88,6 +102,9 @@ python -m clash_verge_traffic_ledger prune --database data/ledger.sqlite --befor
 python -m clash_verge_traffic_ledger compact --database data/ledger.sqlite --before 2026-07-01 --dry-run
 ```
 
+Every raw-retention command defaults to a preview. It mutates the ledger only
+when the same reviewed cutoff is rerun with `--apply`.
+
 For HTTP controller mode:
 
 ```bash
@@ -112,6 +129,8 @@ cannot be written into plist arguments.
 ## Limits
 
 - This records future traffic only. It cannot recover exact bytes from old Clash Verge logs that lack byte counters.
-- Process attribution depends on Mihomo process metadata and `lsof`; TUN traffic without process metadata may remain `unknown`.
+- Process attribution depends on Mihomo metadata and visible local TCP/UDP sockets. Ambiguous endpoints or sockets that disappear before sampling may remain `unknown`; health and audit output report that coverage gap explicitly.
+- Current-day audit windows are partial and report their exact latest sample. An `unknown_process_ratio` is a coverage diagnostic, not proof of unwanted traffic.
+- Applied compaction deletes raw drill-down history before the chosen cutoff, preserves daily rollups, and runs SQLite `VACUUM` to reclaim file space.
 - The Web UI is intentionally read-only and local. It shows summary cards, a 7-day trend, anomaly hints, process totals, and host totals. The authoritative data remains in SQLite.
 - Anomaly cases are deterministic evidence, not malware verdicts. High volume and `unknown` attribution require contextual review.

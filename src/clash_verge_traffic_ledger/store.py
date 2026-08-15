@@ -6,7 +6,7 @@ from datetime import timedelta
 import json
 import sqlite3
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from .models import TrafficDelta
 
@@ -131,7 +131,11 @@ class LedgerStore:
                         ON CONFLICT(date, process) DO UPDATE SET
                             upload_bytes = upload_bytes + excluded.upload_bytes,
                             download_bytes = download_bytes + excluded.download_bytes,
-                            updated_at = excluded.updated_at
+                            updated_at = CASE
+                                WHEN julianday(excluded.updated_at) > julianday(updated_at)
+                                THEN excluded.updated_at
+                                ELSE updated_at
+                            END
                         """,
                         (delta.date, delta.process, delta.upload_bytes, delta.download_bytes, ts),
                     )
@@ -142,7 +146,11 @@ class LedgerStore:
                         ON CONFLICT(date, host) DO UPDATE SET
                             upload_bytes = upload_bytes + excluded.upload_bytes,
                             download_bytes = download_bytes + excluded.download_bytes,
-                            updated_at = excluded.updated_at
+                            updated_at = CASE
+                                WHEN julianday(excluded.updated_at) > julianday(updated_at)
+                                THEN excluded.updated_at
+                                ELSE updated_at
+                            END
                         """,
                         (delta.date, delta.host, delta.upload_bytes, delta.download_bytes, ts),
                     )
@@ -174,8 +182,17 @@ class LedgerStore:
 
     def latest_delta_timestamp(self) -> str | None:
         with closing(self.connect()) as connection:
-            row = connection.execute("SELECT MAX(ts) AS latest FROM traffic_deltas").fetchone()
-        return str(row["latest"]) if row["latest"] else None
+            # Daily rollups retain the last contributing delta timestamp even
+            # after raw evidence is compacted, and are far smaller to scan.
+            row = connection.execute(
+                """
+                SELECT updated_at AS latest
+                FROM daily_process
+                ORDER BY julianday(updated_at) DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        return str(row["latest"]) if row and row["latest"] else None
 
     def raw_delta_count(self) -> int:
         with closing(self.connect()) as connection:
@@ -183,6 +200,7 @@ class LedgerStore:
         return int(row["count"])
 
     def raw_delta_count_before(self, date: str) -> int:
+        self._validate_retention_date(date)
         with closing(self.connect()) as connection:
             row = connection.execute(
                 "SELECT COUNT(*) AS count FROM traffic_deltas WHERE date < ?",
@@ -192,6 +210,7 @@ class LedgerStore:
 
     def delete_raw_before(self, date: str) -> int:
         self._require_writable()
+        self._validate_retention_date(date)
         with closing(self.connect()) as connection:
             with connection:
                 count = connection.execute(
@@ -203,11 +222,18 @@ class LedgerStore:
 
     def compact_raw_before(self, date: str) -> dict[str, int]:
         self._require_writable()
+        database_bytes_before = self.path.stat().st_size
         deleted = self.delete_raw_before(date)
+        with closing(self.connect()) as connection:
+            connection.execute("VACUUM")
+        database_bytes_after = self.path.stat().st_size
         return {
             "deleted_raw_rows": deleted,
             "remaining_raw_rows": self.raw_delta_count(),
             "preserved_rollup_dates": self.rollup_date_count(),
+            "database_bytes_before": database_bytes_before,
+            "database_bytes_after": database_bytes_after,
+            "reclaimed_bytes": max(0, database_bytes_before - database_bytes_after),
         }
 
     def rollup_date_count(self) -> int:
@@ -316,6 +342,7 @@ class LedgerStore:
             rows = connection.execute(
                 f"""
                 SELECT {counterpart} AS counterpart,
+                       source_ip,
                        destination_ip,
                        destination_port,
                        rule,
@@ -329,13 +356,156 @@ class LedgerStore:
                        SUM(upload_bytes + download_bytes) AS total_bytes
                 FROM traffic_deltas
                 WHERE date BETWEEN ? AND ? AND {key} = ?
-                GROUP BY {counterpart}, destination_ip, destination_port, rule, network
+                GROUP BY {counterpart}, source_ip, destination_ip, destination_port, rule, network
                 ORDER BY total_bytes DESC
                 LIMIT ?
                 """,
                 (start_date, end_date, subject, limit),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def evidence_source_breakdown(
+        self,
+        subject_type: str,
+        subject: str,
+        start_date: str,
+        end_date: str,
+        limit: int = 20,
+    ) -> list[dict[str, int | str]]:
+        _, key = self._subject_table(subject_type)
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT source_ip,
+                       COUNT(*) AS delta_rows,
+                       COUNT(DISTINCT connection_id) AS connections,
+                       MIN(ts) AS first_seen,
+                       MAX(ts) AS last_seen,
+                       SUM(upload_bytes) AS upload_bytes,
+                       SUM(download_bytes) AS download_bytes,
+                       SUM(upload_bytes + download_bytes) AS total_bytes
+                FROM traffic_deltas
+                WHERE date BETWEEN ? AND ? AND {key} = ?
+                GROUP BY source_ip
+                ORDER BY total_bytes DESC
+                LIMIT ?
+                """,
+                (start_date, end_date, subject, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def evidence_connection_pattern(
+        self,
+        subject_type: str,
+        subject: str,
+        start_date: str,
+        end_date: str,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        _, key = self._subject_table(subject_type)
+        cte = f"""
+            WITH connection_totals AS (
+                SELECT connection_id,
+                       source_ip,
+                       MIN(ts) AS first_seen,
+                       MAX(ts) AS last_seen,
+                       SUM(upload_bytes) AS upload_bytes,
+                       SUM(download_bytes) AS download_bytes,
+                       SUM(upload_bytes + download_bytes) AS total_bytes
+                FROM traffic_deltas
+                WHERE date BETWEEN ? AND ? AND {key} = ?
+                GROUP BY connection_id, source_ip
+            )
+        """
+        parameters = (start_date, end_date, subject)
+        with closing(self.connect()) as connection:
+            summary = connection.execute(
+                cte
+                + """
+                SELECT COUNT(*) AS connection_count,
+                       COALESCE(MIN(total_bytes), 0) AS min_connection_bytes,
+                       COALESCE(AVG(total_bytes), 0) AS average_connection_bytes,
+                       COALESCE(MAX(total_bytes), 0) AS max_connection_bytes
+                FROM connection_totals
+                """,
+                parameters,
+            ).fetchone()
+            top_rows = connection.execute(
+                cte
+                + """
+                SELECT connection_id, source_ip, first_seen, last_seen,
+                       upload_bytes, download_bytes, total_bytes
+                FROM connection_totals
+                ORDER BY total_bytes DESC, connection_id
+                LIMIT ?
+                """,
+                (*parameters, limit),
+            ).fetchall()
+            minute_rows = connection.execute(
+                cte
+                + """
+                SELECT CAST(strftime('%M', first_seen) AS INTEGER) AS start_minute,
+                       COUNT(*) AS connection_count
+                FROM connection_totals
+                GROUP BY start_minute
+                ORDER BY connection_count DESC, start_minute
+                """,
+                parameters,
+            ).fetchall()
+            source_minute_rows = connection.execute(
+                cte
+                + """
+                SELECT source_ip,
+                       CAST(strftime('%M', first_seen) AS INTEGER) AS start_minute,
+                       COUNT(*) AS connection_count
+                FROM connection_totals
+                GROUP BY source_ip, start_minute
+                ORDER BY source_ip, connection_count DESC, start_minute
+                """,
+                parameters,
+            ).fetchall()
+
+        connection_count = int(summary["connection_count"])
+        dominant_minute = int(minute_rows[0]["start_minute"]) if minute_rows else None
+        dominant_count = int(minute_rows[0]["connection_count"]) if minute_rows else 0
+        dominant_ratio = dominant_count / connection_count if connection_count else 0.0
+        source_distributions: dict[str, list[dict[str, int | str]]] = {}
+        for row in source_minute_rows:
+            source_distributions.setdefault(str(row["source_ip"]), []).append(dict(row))
+        periodic_clusters: list[dict[str, Any]] = []
+        for source_ip, distribution in source_distributions.items():
+            source_count = sum(int(item["connection_count"]) for item in distribution)
+            source_dominant = distribution[0]
+            source_dominant_count = int(source_dominant["connection_count"])
+            source_ratio = source_dominant_count / source_count if source_count else 0.0
+            if source_count >= 3 and source_ratio >= 0.75:
+                periodic_clusters.append(
+                    {
+                        "source_ip": source_ip,
+                        "connection_count": source_count,
+                        "dominant_start_minute": int(source_dominant["start_minute"]),
+                        "dominant_start_count": source_dominant_count,
+                        "dominant_start_ratio": round(source_ratio, 6),
+                    }
+                )
+        periodic_clusters.sort(
+            key=lambda item: (-int(item["dominant_start_count"]), str(item["source_ip"]))
+        )
+        return {
+            "connection_count": connection_count,
+            "min_connection_bytes": int(summary["min_connection_bytes"]),
+            "average_connection_bytes": round(float(summary["average_connection_bytes"]), 3),
+            "max_connection_bytes": int(summary["max_connection_bytes"]),
+            "top_connections": [dict(row) for row in top_rows],
+            "start_minute_distribution": [dict(row) for row in minute_rows],
+            "dominant_start_minute": dominant_minute,
+            "dominant_start_count": dominant_count,
+            "dominant_start_ratio": round(dominant_ratio, 6),
+            "periodic_start_pattern": bool(
+                (connection_count >= 3 and dominant_ratio >= 0.75) or periodic_clusters
+            ),
+            "periodic_clusters": periodic_clusters,
+        }
 
     def rollup_bounds(self) -> dict[str, str | None]:
         with closing(self.connect()) as connection:
@@ -356,6 +526,15 @@ class LedgerStore:
             "first_date": str(row["first_date"]) if row["first_date"] else None,
             "last_date": str(row["last_date"]) if row["last_date"] else None,
         }
+
+    @staticmethod
+    def _validate_retention_date(value: str) -> None:
+        try:
+            normalized = Date.fromisoformat(value).isoformat()
+        except (TypeError, ValueError) as exc:
+            raise ValueError("retention cutoff must use YYYY-MM-DD") from exc
+        if normalized != value:
+            raise ValueError("retention cutoff must use YYYY-MM-DD")
 
     @staticmethod
     def _subject_table(subject_type: str) -> tuple[str, str]:

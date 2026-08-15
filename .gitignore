@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 .venv/
+.venv-release/
+.venv-release-smoke/
 dist/
 build/
 *.egg-info/
@@ -10,4 +12,3 @@ data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-

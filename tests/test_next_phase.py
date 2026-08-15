@@ -176,6 +176,7 @@ class AnomalyTests(unittest.TestCase):
                 byte_threshold=100,
                 unknown_ratio_threshold=0.25,
                 spike_multiplier=2.0,
+                min_unknown_bytes=0,
             )
             codes = [item.code for item in anomalies]
 
@@ -183,6 +184,27 @@ class AnomalyTests(unittest.TestCase):
             self.assertIn("high_host_usage", codes)
             self.assertIn("unknown_process_ratio", codes)
             self.assertIn("process_spike", codes)
+
+    def test_tiny_unknown_share_is_not_reported_as_an_anomaly_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = LedgerStore(Path(tmp) / "ledger.sqlite")
+            current = datetime(2026, 7, 2, 12, 0, tzinfo=timezone.utc)
+            store.record_deltas(
+                [
+                    delta(current, "Cursor", "api.cursor.sh", 1, 1),
+                    delta(current, "unknown", "unknown.example", 1, 1),
+                ]
+            )
+
+            anomalies = detect_anomalies(
+                store,
+                "2026-07-02",
+                byte_threshold=500 * 1024 * 1024,
+                unknown_ratio_threshold=0.25,
+                spike_multiplier=3.0,
+            )
+
+            self.assertNotIn("unknown_process_ratio", {item.code for item in anomalies})
 
 
 class WebDashboardTests(unittest.TestCase):
@@ -211,7 +233,13 @@ class WebDashboardTests(unittest.TestCase):
                 [
                     delta(previous, "Cursor", "api.cursor.sh", 10, 10),
                     delta(current, "Cursor", "api.cursor.sh", 100, 120),
-                    delta(current, "unknown", "unknown.example", 40, 40),
+                    delta(
+                        current,
+                        "unknown",
+                        "unknown.example",
+                        60 * 1024 * 1024,
+                        60 * 1024 * 1024,
+                    ),
                 ]
             )
 
@@ -226,7 +254,7 @@ class WebDashboardTests(unittest.TestCase):
             self.assertIn("Anomaly hints", html)
             self.assertIn("2026-07-01", html)
             self.assertIn("2026-07-02", html)
-            self.assertIn("unknown process traffic", html)
+            self.assertIn("process attribution coverage is degraded", html)
 
 
 class CliParserTests(unittest.TestCase):
