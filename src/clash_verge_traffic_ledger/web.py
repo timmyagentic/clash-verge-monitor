@@ -5,7 +5,8 @@ import json
 from datetime import datetime, date as Date, timedelta
 from .dashboard import panels, STYLE, query_options, to_csv
 from .explore import explore
-from .audit import audit_traffic, find_case, build_evidence
+from .agent_api import capabilities, query_response
+from .contracts import envelope, error_item, exception_response
 from .overview import render_overview, render_details
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -264,6 +265,20 @@ def render_dashboard(
 
 def serve_dashboard(store: LedgerStore, host: str, port: int) -> None:
     class Handler(BaseHTTPRequestHandler):
+        def machine_error(self, status, code, message):
+            body = json.dumps(envelope(urlparse(self.path).path.rsplit('/', 1)[-1], None,
+                ok=False, errors=[error_item(code, message)])).encode()
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def send_error(self, code, message=None, explain=None):
+            if urlparse(self.path).path.startswith('/api/'):
+                return self.machine_error(code, {400:'invalid_request',403:'forbidden',404:'not_found',501:'method_not_allowed'}.get(code, 'resource_unavailable'), message or self.responses[code][0])
+            return super().send_error(code, message, explain)
+
         def do_GET(self) -> None:
             # Loopback-only and Host/Origin validation prevent DNS rebinding reads.
             allowed = {f'127.0.0.1:{port}',f'localhost:{port}'}
@@ -298,24 +313,33 @@ def serve_dashboard(store: LedgerStore, host: str, port: int) -> None:
                     html=render_details(store,options['end'],options) if view=='details' else render_overview(store,options['end'],view,options['route'])
                     body = html.encode('utf-8')
                     mime = 'text/html; charset=utf-8'
+                elif parsed.path == '/api/capabilities':
+                    body = json.dumps(capabilities()).encode('utf-8')
+                    mime = 'application/json'
                 elif parsed.path in ('/api/explore','/export.csv'):
-                    data = explore(store,**options,limit=min(100,max(1,int(query.get('limit',['50'])[0]))))
-                    body = (to_csv(data) if parsed.path == '/export.csv' else json.dumps(data,ensure_ascii=False)).encode('utf-8')
+                    limit = int(query.get('limit',['50'])[0])
+                    data = query_response('explore', store, **options, limit=limit)
+                    body = (to_csv(data['data']) if parsed.path == '/export.csv' else json.dumps(data,ensure_ascii=False)).encode('utf-8')
                     mime = 'text/csv; charset=utf-8' if parsed.path == '/export.csv' else 'application/json'
                 elif parsed.path == '/api/evidence':
-                    case = find_case(store,query.get('case_id',[''])[0])
-                    body = json.dumps(build_evidence(store,case,limit=12),ensure_ascii=False).encode('utf-8')
+                    data = query_response('evidence', store, case_id=query.get('case_id',[''])[0], limit=int(query.get('limit',['20'])[0]))
+                    body = json.dumps(data,ensure_ascii=False).encode('utf-8')
                     mime = 'application/json'
                 elif parsed.path == '/api/audit':
-                    data,warnings,actions = audit_traffic(store,options['end'],window_days=7,baseline_days=30)
-                    body = json.dumps(dict(data=data,warnings=warnings,next_actions=actions),ensure_ascii=False).encode('utf-8')
+                    data = query_response('audit', store, end_date=query.get('end_date',[options['end']])[0],
+                        window_days=int(query.get('since',['7'])[0]), baseline_days=int(query.get('baseline',['30'])[0]), case_limit=int(query.get('limit',['50'])[0]))
+                    body = json.dumps(data,ensure_ascii=False).encode('utf-8')
                     mime = 'application/json'
                 else:
                     self.send_error(404); return
-            except (ValueError,TypeError):
-                self.send_error(400,'Invalid date, filter, or range'); return
-            except Exception:
-                self.send_error(503,'Ledger unavailable'); return
+            except Exception as exc:
+                if parsed.path.startswith('/api/'):
+                    result, code = exception_response(parsed.path.rsplit('/', 1)[-1], exc)
+                    err = result['errors'][0]
+                    self.machine_error(400 if code == 4 else 503 if code == 3 else 500, err['code'], err['message'])
+                else:
+                    self.send_error(400 if isinstance(exc, (ValueError, TypeError, LookupError)) else 503, 'Invalid request or unavailable ledger')
+                return
             self.send_response(200)
             self.send_header('Content-Type',mime)
             self.send_header('Content-Length',str(len(body)))

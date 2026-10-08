@@ -16,6 +16,7 @@ from unittest.mock import patch
 from clash_verge_traffic_ledger.client import ControllerConfig, MihomoClient
 from clash_verge_traffic_ledger.store import LedgerStore
 from clash_verge_traffic_ledger.web import serve_dashboard
+from clash_verge_traffic_ledger.agent_api import query_response
 
 
 class UnixControllerTests(unittest.TestCase):
@@ -106,6 +107,31 @@ class DashboardHTTPTests(unittest.TestCase):
                     r.read()
                     conn.close()
                     self.assertEqual(r.status, expected, url)
+                for url, operation, status in [
+                    ('/api/capabilities', 'capabilities', 200),
+                    ('/api/explore?start=2026-08-22&end=2026-08-22&process=App&offset=1&limit=2', 'explore', 200),
+                    ('/api/audit?end=2026-08-22', 'audit', 200),
+                    ('/api/evidence?case_id=invalid', 'evidence', 400),
+                    ('/api/explore?start=invalid', 'explore', 400),
+                    ('/api/explore?limit=1001', 'explore', 400),
+                    ('/api/no-such-operation', 'no-such-operation', 404),
+                ]:
+                    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
+                    conn.request('GET', url)
+                    r = conn.getresponse()
+                    doc = json.loads(r.read())
+                    self.assertEqual(r.status, status)
+                    self.assertIn('application/json', r.getheader('Content-Type'))
+                    self.assertEqual(doc['schema_version'], '1')
+                    self.assertEqual(doc['operation'], operation)
+                    self.assertIn('runtime', doc)
+                    self.assertEqual(doc['ok'], status == 200)
+                    if operation == 'explore' and status == 200:
+                        expected = query_response('explore', LedgerStore(path, read_only=True),
+                            start='2026-08-22', end='2026-08-22', process='App', offset=1, limit=2)
+                        for key in ['data', 'query', 'warnings', 'errors']:
+                            self.assertEqual(doc[key], expected[key])
+                    conn.close()
                 conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
                 conn.request("POST", "/")
                 r = conn.getresponse()

@@ -17,10 +17,18 @@ DEFAULT_CONTROLLER = "auto"
 DEFAULT_LABEL = "com.timmy.clash-verge-traffic-ledger"
 
 
+class MachineParser(argparse.ArgumentParser):
+    def error(self, message):
+        emit(payload(self.prog.split()[-1], None, ok=False,
+                     errors=[error('invalid_arguments', message)]))
+        self.exit(2)
+
+
 def add_runtime_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--app-root", default=str(default_app_root()))
     parser.add_argument("--database", default=None)
     parser.add_argument("--runtime-python", default=None)
+    parser.add_argument("--runtime-source", default=None, help="Explicit source checkout; overrides installed runtime")
     parser.add_argument("--pretty", action="store_true")
 
 
@@ -29,8 +37,21 @@ def executable_path(value: str | Path) -> Path:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Agent-facing Clash Verge traffic audit wrapper")
+    parser = MachineParser(description="Agent-facing Clash Verge traffic audit wrapper")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    capabilities = commands.add_parser('capabilities', help='Discover the selected runtime capabilities')
+    add_runtime_args(capabilities)
+    explore = commands.add_parser('explore', help='Query retained traffic with bounded pagination')
+    add_runtime_args(explore)
+    explore.add_argument('--start', required=True)
+    explore.add_argument('--end', required=True)
+    explore.add_argument('--by', choices=['process','host','route','hour','minute','connection','rule','chain'], default='process')
+    for name in ['process','host','route']:
+        explore.add_argument('--' + name, default='')
+    explore.add_argument('--limit', type=int, default=50)
+    explore.add_argument('--offset', type=int, default=0)
+    explore.add_argument('--sort', choices=['total','upload','download','time'], default='total')
 
     health = commands.add_parser("health", help="Check installation, sampler, database, and controller")
     add_runtime_args(health)
@@ -68,10 +89,16 @@ def resolve_runtime(args: argparse.Namespace) -> tuple[Path, Path, dict[str, str
     app_root = Path(args.app_root).expanduser().resolve()
     manifest = load_manifest(app_root)
     source = discover_source()
+    if args.runtime_source:
+        source = Path(args.runtime_source).expanduser().resolve()
+        if not (source / 'src' / 'clash_verge_traffic_ledger' / '__main__.py').is_file():
+            raise FileNotFoundError('runtime source is not a ledger checkout')
 
     runtime_python: Path | None = None
     if args.runtime_python:
         runtime_python = executable_path(args.runtime_python)
+    elif args.runtime_source:
+        runtime_python = executable_path(sys.executable)
     elif manifest and manifest.get("runtime_python"):
         runtime_python = executable_path(str(manifest["runtime_python"]))
     elif source:
@@ -93,7 +120,10 @@ def resolve_runtime(args: argparse.Namespace) -> tuple[Path, Path, dict[str, str
 
     environment = os.environ.copy()
     environment["PYTHONUNBUFFERED"] = "1"
-    if manifest:
+    if args.runtime_source:
+        environment["PYTHONPATH"] = str(source / "src")
+        environment.pop("PYTHONHOME", None)
+    elif manifest:
         environment.pop("PYTHONPATH", None)
         environment.pop("PYTHONHOME", None)
     elif source:
@@ -107,7 +137,10 @@ def resolve_runtime(args: argparse.Namespace) -> tuple[Path, Path, dict[str, str
 
 def core_arguments(args: argparse.Namespace, database: Path) -> list[str]:
     core_command = "maintenance" if args.command == "maintain" else args.command
-    values = ["-m", "clash_verge_traffic_ledger", core_command, "--database", str(database)]
+    values = ["-m", "clash_verge_traffic_ledger", core_command]
+    if args.command == 'capabilities':
+        return values
+    values += ["--database", str(database)]
     if args.command == "health":
         values.extend(
             [
@@ -125,6 +158,9 @@ def core_arguments(args: argparse.Namespace, database: Path) -> list[str]:
             values.append("--no-controller-check")
         if args.no_service_check:
             values.append("--no-service-check")
+    elif args.command == 'explore':
+        for name in ['start','end','by','process','host','route','limit','offset','sort']:
+            values += ['--' + name, str(getattr(args, name))]
     elif args.command == "audit":
         values.extend(["--since", str(args.since), "--baseline", str(args.baseline), "--limit", str(args.limit)])
         if args.end_date:
@@ -158,10 +194,34 @@ def invoke(args: argparse.Namespace) -> int:
         )
         return 3
 
+    manifest = load_manifest(Path(args.app_root).expanduser().resolve()) or {}
+    selection = {
+        'mode': 'source' if args.runtime_source else 'explicit_python' if args.runtime_python else 'installed' if manifest else 'source_fallback',
+        'python': str(runtime_python),
+        'source': str(Path(args.runtime_source).expanduser().resolve()) if args.runtime_source else None,
+        'database': str(database),
+        'installed_version': manifest.get('version'),
+    }
     if args.command == 'health' and args.controller is None:
         manifest = load_manifest(Path(args.app_root).expanduser().resolve()) or {}
         args.controller = manifest.get('controller') or DEFAULT_CONTROLLER
-    completed = subprocess.run(
+    if args.command in ('explore', 'capabilities'):
+        probe = subprocess.run([str(runtime_python), '-m', 'clash_verge_traffic_ledger', 'capabilities'],
+                               capture_output=True, text=True, env=environment, check=False)
+        try:
+            supported = json.loads(probe.stdout)
+            compatible = probe.returncode == 0 and args.command in supported['data']['commands']
+        except (ValueError, KeyError, TypeError):
+            compatible = False
+        if not compatible:
+            document = payload(args.command, None, ok=False,
+                errors=[error('runtime_upgrade_required', 'Selected runtime does not advertise this command.')],
+                next_actions=[action('select_compatible_runtime',
+                    'Use --runtime-source <checkout> or an explicitly installed compatible runtime. No runtime was changed.')])
+            document['runtime_selection'] = selection
+            emit(document, pretty=args.pretty)
+            return 3
+    completed = probe if args.command == 'capabilities' else subprocess.run(
         [str(runtime_python), *core_arguments(args, database)],
         capture_output=True,
         text=True,
@@ -170,7 +230,9 @@ def invoke(args: argparse.Namespace) -> int:
     )
     try:
         document: dict[str, Any] = json.loads(completed.stdout)
-    except (json.JSONDecodeError, TypeError) as exc:
+        if not isinstance(document, dict) or not {'schema_version', 'operation', 'ok', 'data', 'errors', 'warnings', 'next_actions'} <= document.keys():
+            raise ValueError('runtime output is not a ledger response envelope')
+    except (ValueError, TypeError) as exc:
         emit(
             payload(
                 args.command,
@@ -195,12 +257,18 @@ def invoke(args: argparse.Namespace) -> int:
         )
         return completed.returncode or 4
 
+    document['runtime_selection'] = selection
     emit(document, pretty=args.pretty)
     return completed.returncode
 
 
 def main(argv: list[str] | None = None) -> int:
-    return invoke(build_parser().parse_args(argv))
+    args = build_parser().parse_args(argv)
+    try:
+        return invoke(args)
+    except OSError as exc:
+        emit(payload(args.command, None, ok=False, errors=[error('runtime_unavailable', str(exc))]), pretty=args.pretty)
+        return 3
 
 
 if __name__ == "__main__":

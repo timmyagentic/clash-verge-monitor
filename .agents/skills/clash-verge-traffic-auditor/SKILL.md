@@ -13,10 +13,21 @@ Resolve paths relative to this loaded skill directory. Do not assume the current
 
 ```bash
 python3 scripts/bootstrap.py status --pretty
+python3 scripts/traffic_auditor.py capabilities --pretty
 python3 scripts/traffic_auditor.py health --pretty
 ```
 
 Treat `bootstrap.py status` as installation truth and `traffic_auditor.py health` as runtime truth. A degraded sampler can still have an audit-ready historical database.
+
+`capabilities` reports the selected runtime version, supported commands, limits and
+coverage/data enums. The wrapper prefers the installed runtime even when invoked
+from a newer checkout. A legacy runtime returns `runtime_upgrade_required` for
+new commands; it never silently switches to source or installs an upgrade.
+To explicitly inspect a candidate, pass `--runtime-source <repo>` and
+`--database <ledger.sqlite>` to each command. This selects source without changing
+installation or service state. Read `runtime_selection` and `runtime.version` in
+the response before attributing results to a candidate. With no source override,
+`--runtime-python` selects an interpreter, not a source checkout.
 
 ## Install Or Start Monitoring
 
@@ -91,8 +102,21 @@ Health now uses successful sampling heartbeats, including idle polls. Legacy tra
 cannot establish coverage. Policy v3 lowers confidence for partial/unknown coverage; do not
 reinterpret v2 case IDs as v3 cases. Re-run audit to obtain the current ID.
 
-For filtered drill-down use the runtime `explore` command (process, host, route, hour, minute,
-connection, rule, chain). Consult `retained_detail` before calling a partial result complete.
+For filtered drill-down use the bundled wrapper:
+
+```bash
+python3 scripts/traffic_auditor.py explore --start 2026-08-22 --end 2026-08-22 --by process --route proxy --limit 50 --offset 0 --pretty
+```
+
+Group by process, host, route, hour, minute, connection, rule or chain. Filters
+`--process`, `--host`, `--route` are exact matches. Sort by total/upload/download/time.
+Advance offset by limit while `truncated` is true. Pages read live data and are not
+an immutable snapshot. Consult `query`, `provenance`, `coverage`, `data_status`,
+`retained_detail`, warnings and limitations together. `unobserved` and
+`indeterminate_zero` never justify saying no traffic occurred; `observed_zero`
+means zero retained sampled bytes with complete sampling coverage, not proof that
+polling captured every short connection. `observed_nonzero` also requires checking
+coverage before calling a total complete.
 `backup`, `restore`, `retention`, and `migrate` provide maintenance workflows. Restore always
 requires a new destination; restore, retention, migration and bootstrap rollback default to
 preview. Use the explicit apply/load flags only within the user's authorized maintenance scope.

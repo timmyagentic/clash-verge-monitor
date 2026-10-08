@@ -1,6 +1,6 @@
 # Anomaly Policy
 
-The runtime uses deterministic policy version 2. It does not ask a model to classify traffic.
+The runtime uses deterministic policy version 3. It does not ask a model to classify traffic.
 
 ## Windows And Coverage
 

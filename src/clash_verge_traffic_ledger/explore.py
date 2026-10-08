@@ -119,9 +119,20 @@ def explore(
                 "SELECT coalesce(sum(upload_bytes+download_bytes),0) FROM traffic_deltas WHERE date>=? AND date<?",
                 (start, stop),
             ).fetchone()[0]
+    coverage = store.coverage(start, end)
+    if totals['total_bytes']:
+        data_status = 'observed_nonzero'
+    elif coverage['status'] == 'complete' and full_total == detail_total:
+        data_status = 'observed_zero'
+    elif coverage['status'] == 'unknown':
+        data_status = 'unobserved'
+    else:
+        data_status = 'indeterminate_zero'
     return {
+        "data_status": data_status,
         "retained_detail": {
-            "status": "complete" if full_total == detail_total else "partial",
+            "status": ("not_applicable" if not full_total and not detail_total else
+                       "complete" if full_total == detail_total else "partial"),
             "unfiltered_daily_bytes": full_total,
             "unfiltered_detail_bytes": detail_total,
         },
@@ -136,7 +147,7 @@ def explore(
         "limit": limit,
         "sort": sort,
         "source": "hourly" if hourly else "raw",
-        "coverage": store.coverage(start, end),
+        "coverage": coverage,
         "limitations": [
             "Sampled connection deltas; short connections and first observations may be missed.",
             "Minute, connection, rule and chain detail can be absent after raw retention.",

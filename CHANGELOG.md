@@ -8,6 +8,12 @@ runtime.
 
 ### Added
 
+- Shared Agent query envelopes across CLI and HTTP, including runtime capabilities,
+  query echo, dataset provenance, explicit zero/unknown data states and coverage warnings.
+- Skill exploration, explicit source selection and actionable legacy-runtime errors.
+- JSON argument/operation errors on stdout; HTTP API clients now read results under `data`.
+- Light overview dashboard with local charts, process rankings, traffic destinations and history.
+
 - Discover current-user Clash sockets and reconnect automatically in auto mode.
 - Track successful idle polls, coverage, failures, reset events and core-counter gaps.
 - Prevent concurrent samplers and reset baselines after outages, wake gaps and core resets.

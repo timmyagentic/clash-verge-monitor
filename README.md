@@ -14,6 +14,24 @@ summaries, filtered drill-down, and guarded backup/restore/retention/rollback.
 See [the reliability guide](docs/reliability.md) for usage, migration and limits.
 A local candidate is not evidence of a published release or an upgraded installed service.
 
+## Agent queries
+
+The primary machine interface is the bundled
+[traffic-auditor Skill](.agents/skills/clash-verge-traffic-auditor/SKILL.md).
+Start with `capabilities`, then `health`, and use `explore` for filtered/paginated
+facts or `audit` → `evidence` for deterministic investigations. All these commands
+emit JSON; byte fields, coverage, warnings, query and provenance travel together.
+
+```bash
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py capabilities
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py explore --runtime-source . --database /path/to/ledger.sqlite --start 2026-08-22 --end 2026-08-22 --route proxy --limit 50
+```
+
+Installed runtime selection is explicit in the result. New source does not imply
+an upgraded installation; `--runtime-source` opts into a checkout without changing
+the sampler. See the [machine contract](.agents/skills/clash-verge-traffic-auditor/references/output-contract.md)
+for empty/missing data states, error codes, HTTP compatibility, and live-read limits.
+
 ## Release status
 
 The previous documented release line is `0.3.0`, which packages the policy-v2 auditor

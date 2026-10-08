@@ -10,9 +10,6 @@ from pathlib import Path
 from .audit import (
     DEFAULT_BASELINE_DAYS,
     DEFAULT_WINDOW_DAYS,
-    audit_traffic,
-    build_evidence,
-    find_case,
 )
 from .anomalies import detect_anomalies, format_anomalies
 from .client import ControllerConfig, DEFAULT_UNIX_SOCKET, MihomoClient, needs_process_lookup
@@ -22,6 +19,7 @@ from .contracts import (
     EXIT_UNAVAILABLE,
     envelope,
     error_item,
+    warning_item,
     render_json,
 )
 from .health import inspect_health, summarize_attribution
@@ -233,90 +231,40 @@ def command_health(args: argparse.Namespace) -> int:
             exit_code=EXIT_UNAVAILABLE,
             retryable=True,
         )
-    print(
-        render_json(
-            envelope("health", data, warnings=warnings, next_actions=next_actions),
-            pretty=args.pretty,
-        )
-    )
+    result = envelope("health", data, warnings=warnings, next_actions=next_actions)
+    result['query'] = {'max_sample_age_seconds': args.max_sample_age,
+                       'check_controller': not args.no_controller_check,
+                       'check_service': not args.no_service_check}
+    # Health already reports the chosen database and heartbeat, including failures.
+    from .agent_api import provenance
+    if data['database']['readable']:
+        try:
+            result['provenance'] = provenance(LedgerStore(args.database, read_only=True))
+        except (OSError, sqlite3.Error):
+            result['warnings'].append(warning_item('provenance_unavailable', 'Database changed or became unavailable after the health check.'))
+    print(render_json(result, pretty=args.pretty))
     return EXIT_OK
 
 
-def command_audit(args: argparse.Namespace) -> int:
-    try:
-        store = LedgerStore(args.database, read_only=True)
-        data, warnings, next_actions = audit_traffic(
-            store,
-            args.end_date or datetime.now().astimezone().date().isoformat(),
-            window_days=args.since,
-            baseline_days=args.baseline,
-            case_limit=args.limit,
-        )
-    except FileNotFoundError as exc:
-        return _machine_error(
-            "audit",
-            "database_missing",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_UNAVAILABLE,
-        )
-    except (ValueError, LookupError) as exc:
-        return _machine_error(
-            "audit",
-            "invalid_audit_request",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-        )
-    except Exception as exc:
-        return _machine_error(
-            "audit",
-            "audit_failed",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-            retryable=True,
-        )
-    print(
-        render_json(
-            envelope("audit", data, warnings=warnings, next_actions=next_actions),
-            pretty=args.pretty,
-        )
-    )
+def command_audit(args):
+    return command_query(args, 'audit', end_date=args.end_date or datetime.now().astimezone().date().isoformat(),
+                         window_days=args.since, baseline_days=args.baseline, case_limit=args.limit)
+
+
+def command_evidence(args):
+    return command_query(args, 'evidence', case_id=args.case_id, limit=args.limit)
+
+
+def command_query(args, operation, **query):
+    from .agent_api import query_response
+    result = query_response(operation, LedgerStore(args.database, read_only=True), **query)
+    print(render_json(result, pretty=args.pretty))
     return EXIT_OK
 
 
-def command_evidence(args: argparse.Namespace) -> int:
-    try:
-        store = LedgerStore(args.database, read_only=True)
-        case = find_case(store, args.case_id)
-        data = build_evidence(store, case, limit=args.limit)
-    except FileNotFoundError as exc:
-        return _machine_error(
-            "evidence",
-            "database_missing",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_UNAVAILABLE,
-        )
-    except (ValueError, LookupError) as exc:
-        return _machine_error(
-            "evidence",
-            "case_not_found",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-        )
-    except Exception as exc:
-        return _machine_error(
-            "evidence",
-            "evidence_failed",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-            retryable=True,
-        )
-    print(render_json(envelope("evidence", data), pretty=args.pretty))
+def command_capabilities(args):
+    from .agent_api import capabilities
+    print(render_json(capabilities(), pretty=args.pretty))
     return EXIT_OK
 
 
@@ -482,11 +430,9 @@ def command_uninstall_service(args: argparse.Namespace) -> int:
 
 
 def command_explore(args):
-    from .explore import explore
-    data = explore(LedgerStore(args.database,read_only=True),args.start,args.end,
-        by=args.by,process=args.process,host=args.host,route=args.route,limit=args.limit,offset=args.offset,sort=args.sort)
-    print(render_json(envelope('explore',data),pretty=args.pretty))
-    return 0
+    return command_query(args, 'explore', start=args.start, end=args.end, by=args.by,
+                         process=args.process, host=args.host, route=args.route,
+                         limit=args.limit, offset=args.offset, sort=args.sort)
 
 
 def command_storage(args):
@@ -512,8 +458,13 @@ def command_storage(args):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="clash-verge-traffic-ledger")
+    from .contracts import MachineArgumentParser
+    parser = MachineArgumentParser(prog="clash-verge-traffic-ledger")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    capabilities_parser = subparsers.add_parser('capabilities', help='Discover runtime version and machine capabilities')
+    add_json_arg(capabilities_parser)
+    capabilities_parser.set_defaults(func=command_capabilities)
 
     doctor = subparsers.add_parser("doctor", help="Check controller and attribution state")
     add_controller_args(doctor)
@@ -677,10 +628,11 @@ def main(argv: list[str] | None = None) -> int:
             with writer_lock(args.database):
                 return int(args.func(args))
         return int(args.func(args))
-    except (ValueError, RuntimeError, OSError, sqlite3.Error) as exc:
-        print(render_json(envelope(args.command,None,ok=False,
-            errors=[error_item(type(exc).__name__,str(exc))])),file=sys.stderr)
-        return 1
+    except Exception as exc:
+        from .contracts import exception_response
+        result, code = exception_response(args.command, exc)
+        print(render_json(result, pretty=getattr(args, 'pretty', False)))
+        return code
 
 
 if __name__ == "__main__":
