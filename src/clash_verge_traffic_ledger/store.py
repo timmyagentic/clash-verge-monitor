@@ -11,7 +11,10 @@ from typing import Any, Iterable
 from .models import TrafficDelta
 
 
-class LedgerStore:
+from .telemetry import TelemetryStore, route_kind, SCHEMA_VERSION
+
+
+class LedgerStore(TelemetryStore):
     def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
         self.path = Path(path).expanduser()
         self.read_only = read_only
@@ -21,7 +24,12 @@ class LedgerStore:
         else:
             if self.path.parent:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self.path.exists():
+                with closing(self.connect()) as c:
+                    if c.execute('PRAGMA user_version').fetchone()[0] > SCHEMA_VERSION:
+                        raise RuntimeError('Database schema is newer than this runtime')
             self._init_schema()
+            self.migrate()
 
     def connect(self) -> sqlite3.Connection:
         if self.read_only:
@@ -95,65 +103,74 @@ class LedgerStore:
             return
         with closing(self.connect()) as connection:
             with connection:
-                for delta in rows:
-                    ts = delta.ts.isoformat()
-                    connection.execute(
-                        """
-                        INSERT INTO traffic_deltas (
-                            ts, date, connection_id, process, host, destination_ip, source_ip,
-                            source_port, destination_port, network, connection_type, chains_json,
-                            rule, upload_bytes, download_bytes
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            ts,
-                            delta.date,
-                            delta.connection_id,
-                            delta.process,
-                            delta.host,
-                            delta.destination_ip,
-                            delta.source_ip,
-                            delta.source_port,
-                            delta.destination_port,
-                            delta.network,
-                            delta.connection_type,
-                            json.dumps(delta.chains),
-                            delta.rule,
-                            delta.upload_bytes,
-                            delta.download_bytes,
-                        ),
-                    )
-                    connection.execute(
-                        """
-                        INSERT INTO daily_process (date, process, upload_bytes, download_bytes, updated_at)
-                        VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(date, process) DO UPDATE SET
-                            upload_bytes = upload_bytes + excluded.upload_bytes,
-                            download_bytes = download_bytes + excluded.download_bytes,
-                            updated_at = CASE
-                                WHEN julianday(excluded.updated_at) > julianday(updated_at)
-                                THEN excluded.updated_at
-                                ELSE updated_at
-                            END
-                        """,
-                        (delta.date, delta.process, delta.upload_bytes, delta.download_bytes, ts),
-                    )
-                    connection.execute(
-                        """
-                        INSERT INTO daily_host (date, host, upload_bytes, download_bytes, updated_at)
-                        VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(date, host) DO UPDATE SET
-                            upload_bytes = upload_bytes + excluded.upload_bytes,
-                            download_bytes = download_bytes + excluded.download_bytes,
-                            updated_at = CASE
-                                WHEN julianday(excluded.updated_at) > julianday(updated_at)
-                                THEN excluded.updated_at
-                                ELSE updated_at
-                            END
-                        """,
-                        (delta.date, delta.host, delta.upload_bytes, delta.download_bytes, ts),
-                    )
+                self._record_rows(connection, rows)
+
+    def _record_rows(self, connection, rows):
+        for delta in rows:
+            ts = delta.ts.isoformat()
+            connection.execute(
+                """
+                INSERT INTO traffic_deltas (
+                    ts, date, connection_id, process, host, destination_ip, source_ip,
+                    source_port, destination_port, network, connection_type, chains_json,
+                    rule, upload_bytes, download_bytes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    ts,
+                    delta.date,
+                    delta.connection_id,
+                    delta.process,
+                    delta.host,
+                    delta.destination_ip,
+                    delta.source_ip,
+                    delta.source_port,
+                    delta.destination_port,
+                    delta.network,
+                    delta.connection_type,
+                    json.dumps(delta.chains),
+                    delta.rule,
+                    delta.upload_bytes,
+                    delta.download_bytes,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO daily_process (date, process, upload_bytes, download_bytes, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(date, process) DO UPDATE SET
+                    upload_bytes = upload_bytes + excluded.upload_bytes,
+                    download_bytes = download_bytes + excluded.download_bytes,
+                    updated_at = CASE
+                        WHEN julianday(excluded.updated_at) > julianday(updated_at)
+                        THEN excluded.updated_at
+                        ELSE updated_at
+                    END
+                """,
+                (delta.date, delta.process, delta.upload_bytes, delta.download_bytes, ts),
+            )
+            connection.execute(
+                """
+                INSERT INTO daily_host (date, host, upload_bytes, download_bytes, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(date, host) DO UPDATE SET
+                    upload_bytes = upload_bytes + excluded.upload_bytes,
+                    download_bytes = download_bytes + excluded.download_bytes,
+                    updated_at = CASE
+                        WHEN julianday(excluded.updated_at) > julianday(updated_at)
+                        THEN excluded.updated_at
+                        ELSE updated_at
+                    END
+                """,
+                (delta.date, delta.host, delta.upload_bytes, delta.download_bytes, ts),
+            )
+            connection.execute("""INSERT INTO hourly_traffic VALUES (?,?,?,?,?,?)
+                ON CONFLICT(hour,process,host,route) DO UPDATE SET
+                upload_bytes=upload_bytes+excluded.upload_bytes,
+                download_bytes=download_bytes+excluded.download_bytes""",
+                (ts[:13], delta.process, delta.host, route_kind(delta.chains),
+                 delta.upload_bytes, delta.download_bytes))
 
     def daily_process(self, date: str, limit: int = 20) -> list[dict[str, int | str]]:
         return self._daily_rows("daily_process", "process", date, limit)

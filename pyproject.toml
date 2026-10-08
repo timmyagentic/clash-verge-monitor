@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clash-verge-traffic-ledger"
-version = "0.3.0"
+version = "0.4.0rc1"
 description = "Clash Verge traffic ledger for Mihomo-compatible cores"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,3 +25,6 @@ Issues = "https://github.com/timmyagentic/clash-verge-traffic-ledger/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+clash_verge_traffic_ledger = ["assets/*.js", "assets/*.css", "assets/*.md", "assets/icons/*.svg", "assets/icons/LICENSE"]

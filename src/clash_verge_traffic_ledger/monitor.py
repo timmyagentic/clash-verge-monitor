@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+import copy
+import math
 import time
 from datetime import datetime
 from typing import Callable, Iterable
@@ -20,6 +22,7 @@ class DeltaComputer:
         self,
         snapshots: Iterable[ConnectionSnapshot],
         now: datetime,
+        since: datetime | None = None,
     ) -> list[TrafficDelta]:
         deltas: list[TrafficDelta] = []
         seen: set[str] = set()
@@ -34,7 +37,11 @@ class DeltaComputer:
             previous = self._last.get(snapshot.connection_id)
             self._last[snapshot.connection_id] = (snapshot.upload, snapshot.download)
             if previous is None:
-                continue
+                # Only count initial bytes if core metadata proves this connection
+                # was created during an uninterrupted, successfully sampled interval.
+                if since is None or snapshot.started_at is None or not since <= snapshot.started_at <= now:
+                    continue
+                previous = (0, 0)
 
             upload_delta = snapshot.upload - previous[0]
             download_delta = snapshot.download - previous[1]
@@ -80,9 +87,9 @@ class Sampler:
         max_backoff: float = 30.0,
         process_lookup_factory: Callable[[], ProcessLookup] = capture_process_lookup,
     ) -> None:
-        if interval <= 0:
+        if not math.isfinite(interval) or interval <= 0:
             raise ValueError("interval must be positive")
-        if max_backoff < interval:
+        if not math.isfinite(max_backoff) or max_backoff < interval:
             raise ValueError("max_backoff must be at least the polling interval")
         self.client = client
         self.store = store
@@ -90,14 +97,53 @@ class Sampler:
         self.max_backoff = max_backoff
         self.process_lookup_factory = process_lookup_factory
         self.delta_computer = DeltaComputer()
+        self.last_success = None
+        self.last_identity = None
+        self.last_totals = None
 
     def sample_once(self, now: datetime | None = None) -> int:
         timestamp = now or datetime.now().astimezone()
-        snapshots = self.client.connection_snapshots(
-            process_lookup_factory=self.process_lookup_factory
-        )
-        deltas = self.delta_computer.compute(snapshots, timestamp)
-        self.store.record_deltas(deltas)
+        started = time.monotonic()
+        # Commit the baseline only after the database transaction succeeds.
+        computer = copy.deepcopy(self.delta_computer)
+        try:
+            snapshots = self.client.connection_snapshots(
+                process_lookup_factory=self.process_lookup_factory
+            )
+            timestamp = now or datetime.now().astimezone()
+            identity = getattr(self.client, 'identity', '')
+            totals = getattr(self.client, 'last_totals', None)
+            elapsed = (timestamp-self.last_success).total_seconds() if self.last_success else 0
+            gap = elapsed < 0 or elapsed > max(5, self.interval * 3) or (self.last_success is not None and self.last_success.utcoffset() != timestamp.utcoffset())
+            reset = totals is not None and self.last_totals is not None and any(
+                a < b for a,b in zip(totals,self.last_totals))
+            changed = self.last_identity is not None and self.last_identity != identity
+            if gap or reset or changed:
+                computer = DeltaComputer()
+            deltas = computer.compute(snapshots, timestamp, since=self.last_success if not (gap or reset or changed) else None)
+            covered = elapsed if self.last_success and not (gap or reset or changed) else 0
+            core_delta = tuple(a-b for a,b in zip(totals,self.last_totals)) if (
+                covered > 0 and totals is not None and self.last_totals is not None) else None
+            if hasattr(self.store, 'record_sample'):
+                self.store.record_sample(timestamp, deltas, interval=self.interval,
+                    covered=covered, controller=getattr(self.client,'resolved_controller',''),
+                    identity=identity, connection_count=len(snapshots), duration=time.monotonic()-started,
+                    core_delta=core_delta, event='baseline_reset' if gap or reset or changed else None)
+            else:
+                self.store.record_deltas(deltas)
+        except Exception as exc:
+            self.delta_computer = DeltaComputer()
+            self.last_success = None
+            self.last_totals = None
+            if hasattr(self.store, 'record_sample'):
+                self.store.record_sample(timestamp, [], interval=self.interval,
+                    error=type(exc).__name__, controller=getattr(self.client,'resolved_controller',''),
+                    identity=getattr(self.client,'identity',''), duration=time.monotonic()-started)
+            raise
+        self.delta_computer = computer
+        self.last_success = timestamp
+        self.last_identity = identity
+        self.last_totals = totals
         return len(deltas)
 
     def run_forever(
@@ -123,7 +169,7 @@ class Sampler:
                 write_error(
                     "sampler error: {kind}: {message}; retrying in {delay:g}s".format(
                         kind=type(exc).__name__,
-                        message=exc,
+                        message="sampling failed",
                         delay=delay,
                     )
                 )

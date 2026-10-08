@@ -3,15 +3,13 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 from .audit import (
     DEFAULT_BASELINE_DAYS,
     DEFAULT_WINDOW_DAYS,
-    audit_traffic,
-    build_evidence,
-    find_case,
 )
 from .anomalies import detect_anomalies, format_anomalies
 from .client import ControllerConfig, DEFAULT_UNIX_SOCKET, MihomoClient, needs_process_lookup
@@ -21,10 +19,12 @@ from .contracts import (
     EXIT_UNAVAILABLE,
     envelope,
     error_item,
+    warning_item,
     render_json,
 )
 from .health import inspect_health, summarize_attribution
 from .monitor import Sampler
+from .locking import writer_lock
 from .process_lookup import capture_process_lookup, lsof_path
 from .reports import export_csv, export_markdown, format_report
 from .service import (
@@ -47,8 +47,8 @@ DEFAULT_ANOMALY_BYTE_THRESHOLD = 500 * 1024 * 1024
 def add_controller_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--controller",
-        default=DEFAULT_UNIX_SOCKET,
-        help="Mihomo controller URL or unix socket path",
+        default="auto",
+        help="auto, Mihomo controller URL, or an explicit unix socket path",
     )
     parser.add_argument("--secret", default=None, help="Mihomo controller secret")
     parser.add_argument("--secret-file", default=None, help="Read the controller secret from a file")
@@ -119,6 +119,11 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 
 def command_run(args: argparse.Namespace) -> int:
+    with writer_lock(args.database):
+        return _run_locked(args)
+
+
+def _run_locked(args: argparse.Namespace) -> int:
     client = build_client(args)
     store = LedgerStore(args.database)
     sampler = Sampler(
@@ -148,7 +153,7 @@ def rows_for(args: argparse.Namespace, store: LedgerStore) -> tuple[str, str, li
 
 
 def command_today(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date, key, rows = rows_for(args, store)
     title = f"Traffic by {key}"
     print(format_report(date, rows, title=title, key=key))
@@ -156,7 +161,7 @@ def command_today(args: argparse.Namespace) -> int:
 
 
 def command_export(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date, key, rows = rows_for(args, store)
     title = f"Traffic by {key}"
     if args.format == "csv":
@@ -168,7 +173,7 @@ def command_export(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date = report_date(args)
     service_label = None if args.no_service_check else args.service_label
     print(format_status(build_status(store, date, service_label=service_label), date))
@@ -176,7 +181,7 @@ def command_status(args: argparse.Namespace) -> int:
 
 
 def command_anomalies(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date = report_date(args)
     anomalies = detect_anomalies(
         store,
@@ -226,90 +231,40 @@ def command_health(args: argparse.Namespace) -> int:
             exit_code=EXIT_UNAVAILABLE,
             retryable=True,
         )
-    print(
-        render_json(
-            envelope("health", data, warnings=warnings, next_actions=next_actions),
-            pretty=args.pretty,
-        )
-    )
+    result = envelope("health", data, warnings=warnings, next_actions=next_actions)
+    result['query'] = {'max_sample_age_seconds': args.max_sample_age,
+                       'check_controller': not args.no_controller_check,
+                       'check_service': not args.no_service_check}
+    # Health already reports the chosen database and heartbeat, including failures.
+    from .agent_api import provenance
+    if data['database']['readable']:
+        try:
+            result['provenance'] = provenance(LedgerStore(args.database, read_only=True))
+        except (OSError, sqlite3.Error):
+            result['warnings'].append(warning_item('provenance_unavailable', 'Database changed or became unavailable after the health check.'))
+    print(render_json(result, pretty=args.pretty))
     return EXIT_OK
 
 
-def command_audit(args: argparse.Namespace) -> int:
-    try:
-        store = LedgerStore(args.database, read_only=True)
-        data, warnings, next_actions = audit_traffic(
-            store,
-            args.end_date or datetime.now().astimezone().date().isoformat(),
-            window_days=args.since,
-            baseline_days=args.baseline,
-            case_limit=args.limit,
-        )
-    except FileNotFoundError as exc:
-        return _machine_error(
-            "audit",
-            "database_missing",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_UNAVAILABLE,
-        )
-    except (ValueError, LookupError) as exc:
-        return _machine_error(
-            "audit",
-            "invalid_audit_request",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-        )
-    except Exception as exc:
-        return _machine_error(
-            "audit",
-            "audit_failed",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-            retryable=True,
-        )
-    print(
-        render_json(
-            envelope("audit", data, warnings=warnings, next_actions=next_actions),
-            pretty=args.pretty,
-        )
-    )
+def command_audit(args):
+    return command_query(args, 'audit', end_date=args.end_date or datetime.now().astimezone().date().isoformat(),
+                         window_days=args.since, baseline_days=args.baseline, case_limit=args.limit)
+
+
+def command_evidence(args):
+    return command_query(args, 'evidence', case_id=args.case_id, limit=args.limit)
+
+
+def command_query(args, operation, **query):
+    from .agent_api import query_response
+    result = query_response(operation, LedgerStore(args.database, read_only=True), **query)
+    print(render_json(result, pretty=args.pretty))
     return EXIT_OK
 
 
-def command_evidence(args: argparse.Namespace) -> int:
-    try:
-        store = LedgerStore(args.database, read_only=True)
-        case = find_case(store, args.case_id)
-        data = build_evidence(store, case, limit=args.limit)
-    except FileNotFoundError as exc:
-        return _machine_error(
-            "evidence",
-            "database_missing",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_UNAVAILABLE,
-        )
-    except (ValueError, LookupError) as exc:
-        return _machine_error(
-            "evidence",
-            "case_not_found",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-        )
-    except Exception as exc:
-        return _machine_error(
-            "evidence",
-            "evidence_failed",
-            exc,
-            pretty=args.pretty,
-            exit_code=EXIT_DATA_ERROR,
-            retryable=True,
-        )
-    print(render_json(envelope("evidence", data), pretty=args.pretty))
+def command_capabilities(args):
+    from .agent_api import capabilities
+    print(render_json(capabilities(), pretty=args.pretty))
     return EXIT_OK
 
 
@@ -379,7 +334,7 @@ def command_maintenance(args: argparse.Namespace) -> int:
 
 
 def command_web(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     print(f"serving http://{args.host}:{args.port}/")
     serve_dashboard(store, args.host, args.port)
     return 0
@@ -474,9 +429,42 @@ def command_uninstall_service(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_explore(args):
+    return command_query(args, 'explore', start=args.start, end=args.end, by=args.by,
+                         process=args.process, host=args.host, route=args.route,
+                         limit=args.limit, offset=args.offset, sort=args.sort)
+
+
+def command_storage(args):
+    from .maintenance import backup_database, restore_database, retention
+    if args.command == 'backup':
+        data = backup_database(args.database,args.output)
+    elif args.command == 'restore':
+        data = restore_database(args.database,args.output,args.apply)
+    elif args.command == 'migrate':
+        if not args.apply:
+            data = {'apply':False,'schema_target':2,'database':args.database}
+        else:
+            with writer_lock(args.database):
+                LedgerStore(args.database)
+            data = {'apply':True,'schema_target':2}
+    elif args.apply:
+        with writer_lock(args.database):
+            data = retention(LedgerStore(args.database),args.config,True)
+    else:
+        data = retention(LedgerStore(args.database,read_only=True),args.config)
+    print(render_json(envelope(args.command,data),pretty=args.pretty))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="clash-verge-traffic-ledger")
+    from .contracts import MachineArgumentParser
+    parser = MachineArgumentParser(prog="clash-verge-traffic-ledger")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    capabilities_parser = subparsers.add_parser('capabilities', help='Discover runtime version and machine capabilities')
+    add_json_arg(capabilities_parser)
+    capabilities_parser.set_defaults(func=command_capabilities)
 
     doctor = subparsers.add_parser("doctor", help="Check controller and attribution state")
     add_controller_args(doctor)
@@ -606,13 +594,45 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall_service.add_argument("--keep-plist", action="store_true")
     uninstall_service.set_defaults(func=command_uninstall_service)
 
+    explore_parser = subparsers.add_parser('explore',help='Filter and drill down into retained traffic')
+    add_database_arg(explore_parser)
+    add_json_arg(explore_parser)
+    explore_parser.add_argument('--start',required=True)
+    explore_parser.add_argument('--end',required=True)
+    explore_parser.add_argument('--by',choices=['process','host','route','hour','minute','connection','rule','chain'],default='process')
+    for key in ('process','host','route'):
+        explore_parser.add_argument('--'+key,default='')
+    explore_parser.add_argument('--limit',type=int,default=50)
+    explore_parser.add_argument('--offset',type=int,default=0)
+    explore_parser.add_argument('--sort',choices=['total','upload','download','time'],default='total')
+    explore_parser.set_defaults(func=command_explore)
+    for name in ('backup','restore','retention','migrate'):
+        p = subparsers.add_parser(name)
+        add_database_arg(p)
+        add_json_arg(p)
+        if name in ('backup','restore'):
+            p.add_argument('--output',required=True)
+        if name != 'backup':
+            p.add_argument('--apply',action='store_true')
+        if name == 'retention':
+            p.add_argument('--config',default=None,help='TOML retention policy')
+        p.set_defaults(func=command_storage)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        if args.command in ('maintenance','prune','compact') and args.apply:
+            with writer_lock(args.database):
+                return int(args.func(args))
+        return int(args.func(args))
+    except Exception as exc:
+        from .contracts import exception_response
+        result, code = exception_response(args.command, exc)
+        print(render_json(result, pretty=getattr(args, 'pretty', False)))
+        return code
 
 
 if __name__ == "__main__":

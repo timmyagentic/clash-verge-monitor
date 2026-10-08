@@ -40,6 +40,7 @@ class ConnectionSnapshot:
     connection_type: str
     chains: list[str]
     rule: str
+    started_at: datetime | None = None
 
     @classmethod
     def from_api_item(
@@ -69,6 +70,12 @@ class ConnectionSnapshot:
         host = str(metadata.get("host") or destination_ip or "unknown").strip() or "unknown"
         chains = item.get("chains") if isinstance(item.get("chains"), list) else []
 
+        try:
+            started_at = datetime.fromisoformat(str(item.get('start','')).replace('Z','+00:00'))
+            if started_at.tzinfo is None:
+                started_at = None
+        except ValueError:
+            started_at = None
         fallback_id = f"{source_ip}:{source_port}->{destination_ip}:{destination_port}"
         return cls(
             connection_id=str(item.get("id") or fallback_id),
@@ -84,6 +91,7 @@ class ConnectionSnapshot:
             connection_type=str(metadata.get("type") or ""),
             chains=[str(chain) for chain in chains],
             rule=str(item.get("rule") or item.get("rulePayload") or ""),
+            started_at=started_at,
         )
 
 

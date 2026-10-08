@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import sqlite3
+from contextlib import closing
 import json
 import os
 import plistlib
@@ -22,7 +25,7 @@ from lib.paths import default_app_root, default_launch_agents_dir, discover_sour
 
 SAMPLER_LABEL = "com.timmy.clash-verge-traffic-ledger"
 WEB_LABEL = f"{SAMPLER_LABEL}.web"
-DEFAULT_CONTROLLER = "/tmp/verge/verge-mihomo.sock"
+DEFAULT_CONTROLLER = "auto"
 
 
 def add_path_args(parser: argparse.ArgumentParser) -> None:
@@ -58,6 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.add_argument("--keep-runtime", action="store_true")
     uninstall.add_argument("--keep-plists", action="store_true")
 
+    rollback = commands.add_parser('rollback', help='Preview or restore a saved installation checkpoint')
+    add_path_args(rollback)
+    rollback.add_argument('--checkpoint',required=True)
+    rollback.add_argument('--database',default=None,help='Compatible restored database; original is never overwritten')
+    rollback.add_argument('--apply',action='store_true')
+    rollback.add_argument('--load',action='store_true')
     return parser
 
 
@@ -194,6 +203,8 @@ def launchd_payload(
 def install_runtime(source: Path, runtime_root: Path, bootstrap_python: Path) -> Path:
     venv_root = runtime_root / "venv"
     runtime_python = venv_root / "bin" / "python"
+    if runtime_python.is_file() and (runtime_root / "src" / "clash_verge_traffic_ledger" / "__init__.py").is_file():
+        return runtime_python
     if not runtime_python.is_file():
         if venv_root.exists():
             shutil.rmtree(venv_root)
@@ -310,6 +321,81 @@ def command_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def runtime_digest(source: Path) -> str:
+    digest = hashlib.sha256()
+    package = source / 'src' / 'clash_verge_traffic_ledger'
+    for path in sorted(package.rglob('*')):
+        if not path.is_file() or '__pycache__' in path.parts or path.suffix == '.pyc':
+            continue
+        digest.update(str(path.relative_to(package)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
+def save_checkpoint(app_root: Path, launch_agents_dir: Path) -> Path | None:
+    previous = load_manifest(app_root)
+    if not previous:
+        return None
+    checkpoint = {'manifest':previous,'plists':{}}
+    for label in (SAMPLER_LABEL, WEB_LABEL):
+        path = launch_agents_dir / f'{label}.plist'
+        if path.is_file():
+            checkpoint['plists'][label] = plistlib.loads(path.read_bytes())
+    target = app_root / 'backups' / f'checkpoint-{uuid.uuid4().hex}.json'
+    atomic_write(target,json.dumps(checkpoint,indent=2).encode(),mode=0o600)
+    return target
+
+
+def command_rollback(args: argparse.Namespace) -> int:
+    try:
+        app_root = absolute(args.app_root)
+        checkpoint = absolute(args.checkpoint)
+        if not checkpoint.is_relative_to(app_root / 'backups'):
+            raise ValueError('Checkpoint must belong to this installation backup directory')
+        saved = json.loads(checkpoint.read_text())
+        manifest = saved['manifest']
+        runtime = Path(manifest['runtime_python'])
+        if not runtime.is_file():
+            raise FileNotFoundError('Previous runtime is no longer available')
+        database = absolute(args.database or manifest['database'])
+        if not database.is_file():
+            raise FileNotFoundError('Rollback database is missing')
+        with closing(sqlite3.connect(database.as_uri()+'?mode=ro',uri=True)) as c:
+            schema = c.execute('PRAGMA user_version').fetchone()[0]
+            if schema > manifest.get('database_schema_max',0):
+                raise ValueError('Previous runtime cannot use this schema. Restore the pre-upgrade backup to a new path and pass --database.')
+            if c.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+                raise ValueError('Rollback database failed integrity check')
+        plists = {}
+        for label in (SAMPLER_LABEL,WEB_LABEL):
+            content = saved['plists'][label]
+            if content.get('Label') != label or content['ProgramArguments'][0] != str(runtime):
+                raise ValueError('Checkpoint service identity does not match runtime')
+            arguments = content['ProgramArguments']
+            arguments[arguments.index('--database')+1] = str(database)
+            plists[label] = plistlib.dumps(content)
+        plan = {'runtime':str(runtime),'database':str(database),'load':args.load,'checkpoint':str(checkpoint)}
+        if args.apply:
+            launch_agents = absolute(args.launch_agents_dir)
+            save_checkpoint(app_root,launch_agents)
+            if args.load:
+                for label in plists:
+                    unload_service(label,launch_agents / f'{label}.plist')
+            for label,content in plists.items():
+                atomic_write(launch_agents / f'{label}.plist',content)
+            manifest['database'] = str(database)
+            manifest['updated_at'] = datetime.now(timezone.utc).isoformat()
+            atomic_write(app_root/'install.json',json.dumps(manifest,indent=2).encode(),mode=0o600)
+            if args.load:
+                for label in plists:
+                    load_service(label,launch_agents / f'{label}.plist')
+        emit(payload('bootstrap_rollback',{'dry_run':not args.apply,'plan':plan}),pretty=args.pretty)
+        return 0
+    except Exception as exc:
+        emit(payload('bootstrap_rollback',None,ok=False,errors=[error('rollback_failed',str(exc))]),pretty=args.pretty)
+        return 1
+
+
 def command_install(args: argparse.Namespace) -> int:
     try:
         source = validate_source(discover_source(args.source))
@@ -319,7 +405,7 @@ def command_install(args: argparse.Namespace) -> int:
         app_root = absolute(args.app_root)
         launch_agents_dir = absolute(args.launch_agents_dir)
         version = read_version(source)
-        runtime_root = app_root / "runtime" / version
+        runtime_root = app_root / "runtime" / f"{version}-{runtime_digest(source)}"
         runtime_python = runtime_root / "venv" / "bin" / "python"
         if args.database:
             database = absolute(args.database)
@@ -348,7 +434,25 @@ def command_install(args: argparse.Namespace) -> int:
         logs = app_root / "logs"
         for directory in [app_root, app_root / "data", logs, app_root / "backups"]:
             directory.mkdir(parents=True, exist_ok=True)
+        checkpoint = save_checkpoint(app_root,launch_agents_dir)
         runtime_python = install_runtime(source, runtime_root, absolute(args.bootstrap_python))
+        database_backup = None
+        if database.is_file():
+            with closing(sqlite3.connect(database.as_uri()+'?mode=ro',uri=True)) as c:
+                needs_backup = c.execute('PRAGMA user_version').fetchone()[0] < 2
+        else:
+            needs_backup = False
+        if needs_backup:
+            database_backup = app_root / 'backups' / f'ledger-{uuid.uuid4().hex}.sqlite'
+            subprocess.run([str(runtime_python),'-m','clash_verge_traffic_ledger','backup',
+                '--database',str(database),'--output',str(database_backup)],check=True,capture_output=True)
+        if args.load:
+            # The old 0.3 runtime predates cooperative locks. Stop it before migration.
+            for label,path in ((SAMPLER_LABEL,sampler_plist),(WEB_LABEL,web_plist)):
+                if path.is_file():
+                    unload_service(label,path)
+            subprocess.run([str(runtime_python),'-m','clash_verge_traffic_ledger','migrate',
+                '--database',str(database),'--apply'],check=True,capture_output=True)
 
         sampler_arguments = [
             str(runtime_python),
@@ -401,6 +505,9 @@ def command_install(args: argparse.Namespace) -> int:
         previous_manifest = load_manifest(app_root) or {}
         manifest = {
             "schema_version": "1",
+            "database_schema_max": 2,
+            "rollback_checkpoint": str(checkpoint) if checkpoint else None,
+            "pre_upgrade_database_backup": str(database_backup) if database_backup else None,
             "version": version,
             "source": str(source),
             "source_revision": source_revision(source),
@@ -536,6 +643,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "status":
         return command_status(args)
+    if args.command == "rollback":
+        return command_rollback(args)
     if args.command == "install":
         return command_install(args)
     return command_uninstall(args)

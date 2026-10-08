@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import statistics
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date as Date
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -12,7 +12,7 @@ from .contracts import action_item, warning_item
 from .store import LedgerStore
 
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 DEFAULT_WINDOW_DAYS = 7
 DEFAULT_BASELINE_DAYS = 30
 MIN_BASELINE_DAYS = 7
@@ -600,6 +600,13 @@ def audit_traffic(
             )
         )
 
+    sampling_coverage = store.coverage(window_start, window_end, now=now)
+    baseline_coverage = store.coverage(baseline_start, baseline_end, now=now)
+    coverage_uncertain = sampling_coverage['status'] != 'complete' or baseline_coverage['status'] != 'complete'
+    if coverage_uncertain:
+        cases = [replace(case, confidence='low',
+            severity='warning' if case.severity == 'critical' else case.severity,
+            limitations=case.limitations + ['Sampling coverage is partial or unknown; changes are provisional, not security verdicts.']) for case in cases]
     cases.sort(
         key=lambda item: (
             _SEVERITY_ORDER.get(item.severity, 9),
@@ -612,6 +619,8 @@ def audit_traffic(
     cases = cases[:case_limit]
     warnings: list[dict[str, Any]] = list(freshness_warnings)
     next_actions: list[dict[str, Any]] = []
+    if coverage_uncertain:
+        warnings.append(warning_item('sampling_coverage_incomplete', 'Coverage is partial or unknown; historical gaps are not zero traffic.'))
     if not current_dates:
         warnings.append(warning_item("no_window_data", "No traffic rollups exist in the requested window."))
     if len(baseline_dates) < MIN_BASELINE_DAYS:
@@ -664,7 +673,7 @@ def audit_traffic(
                 case_id=alert_cases[0].case_id,
             )
         )
-    elif not current_dates or len(baseline_dates) < MIN_BASELINE_DAYS:
+    elif not current_dates or len(baseline_dates) < MIN_BASELINE_DAYS or coverage_uncertain:
         verdict = "insufficient_data"
     else:
         verdict = "no_anomalies"
@@ -715,6 +724,9 @@ def audit_traffic(
             "active_baseline_days": len(baseline_dates),
             "available_rollups": store.rollup_bounds(),
             **freshness,
+            'window_end_status': sampling_coverage['days'][-1]['status'],
+            'sampling': sampling_coverage,
+            'baseline_sampling': baseline_coverage,
             "process_attribution": {
                 "status": "degraded" if attribution_degraded else "healthy",
                 "known_bytes": current_process_total - unknown_total,

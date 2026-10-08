@@ -6,9 +6,35 @@ The runtime records future traffic from the Mihomo controller, attributes bytes 
 
 For the full Chinese project context and current MVP status, see [docs/project-brief.zh-CN.md](docs/project-brief.zh-CN.md).
 
+## Reliability candidate
+
+The current local candidate is `0.4.0rc1` (Unreleased). It adds automatic controller
+rediscovery, independent sampling heartbeats and coverage, policy v3, hourly route
+summaries, filtered drill-down, and guarded backup/restore/retention/rollback.
+See [the reliability guide](docs/reliability.md) for usage, migration and limits.
+A local candidate is not evidence of a published release or an upgraded installed service.
+
+## Agent queries
+
+The primary machine interface is the bundled
+[traffic-auditor Skill](.agents/skills/clash-verge-traffic-auditor/SKILL.md).
+Start with `capabilities`, then `health`, and use `explore` for filtered/paginated
+facts or `audit` → `evidence` for deterministic investigations. All these commands
+emit JSON; byte fields, coverage, warnings, query and provenance travel together.
+
+```bash
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py capabilities
+python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py explore --runtime-source . --database /path/to/ledger.sqlite --start 2026-08-22 --end 2026-08-22 --route proxy --limit 50
+```
+
+Installed runtime selection is explicit in the result. New source does not imply
+an upgraded installation; `--runtime-source` opts into a checkout without changing
+the sampler. See the [machine contract](.agents/skills/clash-verge-traffic-auditor/references/output-contract.md)
+for empty/missing data states, error codes, HTTP compatibility, and live-read limits.
+
 ## Release status
 
-The current release line is `0.3.0`, which packages the policy-v2 auditor
+The previous documented release line is `0.3.0`, which packages the policy-v2 auditor
 hardening. Formal artifacts belong to the immutable
 [`v0.3.0` GitHub Release](https://github.com/timmyagentic/clash-verge-traffic-ledger/releases/tag/v0.3.0).
 A version in source or a local installation alone is not publication proof; see
@@ -33,11 +59,11 @@ This repo intentionally keeps the first version small and local. It borrows prov
 
 ## MVP
 
-- Connect to Clash Verge Rev through the default unix socket: `/tmp/verge/verge-mihomo.sock`.
+- Discover the current-user service socket automatically; explicit endpoints remain pinned.
 - Optionally connect to an HTTP controller for non-Verge Mihomo setups.
 - Poll `/connections` at a configurable interval.
 - Compute byte deltas per Mihomo connection id.
-- Treat first-seen connections as a baseline, so old bytes are not counted as new monitor usage.
+- Baseline pre-existing connections; count initial bytes only when a start timestamp proves a connection began within a continuously sampled interval.
 - Attribute process from Mihomo metadata first, then capture at most one TCP/UDP `lsof` socket table after each controller snapshot that still needs localhost or TUN fallback attribution.
 - Store raw deltas and daily rollups in SQLite.
 - Provide CLI commands for `doctor`, `run`, `today`, and `export`.
@@ -134,3 +160,16 @@ cannot be written into plist arguments.
 - Applied compaction deletes raw drill-down history before the chosen cutoff, preserves daily rollups, and runs SQLite `VACUUM` to reclaim file space.
 - The Web UI is intentionally read-only and local. It shows summary cards, a 7-day trend, anomaly hints, process totals, and host totals. The authoritative data remains in SQLite.
 - Anomaly cases are deterministic evidence, not malware verdicts. High volume and `unknown` attribution require contextual review.
+
+## Dashboard candidate
+
+The 0.4 local dashboard now opens with a traffic overview, upload/download trend,
+application ranking and destinations. Select a date or proxy/direct scope; open
+an application or destination to inspect retained minute/connection details.
+The History tab shows the preceding seven days. Sampling details are collapsed
+by default, and dates without coverage display unknown rather than fabricated zero usage.
+
+Chart.js 4.4.8 and Tabler Icons 3.31.0 are bundled locally under package assets
+with their licenses. There are no runtime CDN requests. The visual QA record is
+[design-qa.md](design-qa.md). The installed production service is not changed by
+opening this candidate preview.

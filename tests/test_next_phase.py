@@ -222,7 +222,7 @@ class WebDashboardTests(unittest.TestCase):
             self.assertIn("Cursor", html)
             self.assertIn("api.cursor.sh", html)
             self.assertIn("100 B", html)
-            self.assertNotIn("<form", html.lower())
+            self.assertNotIn('method="post"', html.lower())
 
     def test_dashboard_includes_trend_and_anomaly_sections(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -251,10 +251,10 @@ class WebDashboardTests(unittest.TestCase):
             )
 
             self.assertIn("Daily trend", html)
-            self.assertIn("Anomaly hints", html)
+            self.assertIn("异常提示说明", html)
             self.assertIn("2026-07-01", html)
             self.assertIn("2026-07-02", html)
-            self.assertIn("process attribution coverage is degraded", html)
+            self.assertIn("应用归属缺口", html)
 
 
 class CliParserTests(unittest.TestCase):
