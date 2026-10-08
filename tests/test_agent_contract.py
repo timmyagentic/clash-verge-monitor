@@ -106,7 +106,7 @@ class HealthTests(unittest.TestCase):
     def test_health_separates_audit_readiness_from_sampling_readiness(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ledger.sqlite"
-            seeded_store(path)
+            seeded_store(path).record_sample(datetime(2026,7,19,12,tzinfo=timezone.utc), [], interval=1)
             now = datetime(2026, 7, 19, 12, 1, tzinfo=timezone.utc)
 
             data, warnings, actions = inspect_health(
@@ -132,7 +132,7 @@ class HealthTests(unittest.TestCase):
     def test_health_is_degraded_when_history_is_readable_but_sampling_is_down(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ledger.sqlite"
-            seeded_store(path)
+            seeded_store(path).record_sample(datetime(2026,7,19,12,tzinfo=timezone.utc), [], interval=1)
 
             def unavailable_controller(config):
                 raise FileNotFoundError("controller socket missing")
@@ -157,7 +157,7 @@ class HealthTests(unittest.TestCase):
     def test_health_degrades_when_live_process_attribution_is_low(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ledger.sqlite"
-            seeded_store(path)
+            seeded_store(path).record_sample(datetime(2026,7,19,12,tzinfo=timezone.utc), [], interval=1)
 
             data, warnings, actions = inspect_health(
                 path,
@@ -200,12 +200,12 @@ class AuditTests(unittest.TestCase):
             self.assertIn("process_upload_spike", codes)
             self.assertIn("new_process", codes)
             self.assertIn("unknown_process_ratio", codes)
-            self.assertTrue(all(case["case_id"].startswith("v2-20260719-7d-30d-") for case in data["cases"]))
+            self.assertTrue(all(case["case_id"].startswith("v3-20260719-7d-30d-") for case in data["cases"]))
             unknown_case = next(
                 case for case in data["cases"] if case["code"] == "unknown_process_ratio"
             )
             self.assertEqual(unknown_case["baseline"]["daily_median_bytes"], 2 * MIB)
-            self.assertEqual({item["code"] for item in warnings}, {"process_attribution_degraded"})
+            self.assertEqual({item["code"] for item in warnings}, {"process_attribution_degraded", "sampling_coverage_incomplete"})
             self.assertEqual(actions[0]["code"], "inspect_case")
 
     def test_case_id_rebuilds_rollup_and_raw_evidence(self):
@@ -264,9 +264,9 @@ class AuditTests(unittest.TestCase):
             data, warnings, actions = audit_traffic(store, "2026-07-19")
 
             self.assertEqual(data["summary"]["total_bytes"], 7)
-            self.assertEqual(data["verdict"], "no_anomalies")
+            self.assertEqual(data["verdict"], "insufficient_data")
             self.assertNotIn("unknown_process_ratio", {case["code"] for case in data["cases"]})
-            self.assertEqual(warnings, [])
+            self.assertEqual([w["code"] for w in warnings], ["sampling_coverage_incomplete"])
             self.assertEqual(actions, [])
 
     def test_chronic_unknown_share_is_a_coverage_diagnostic_not_an_anomaly(self):
@@ -293,7 +293,7 @@ class AuditTests(unittest.TestCase):
 
             self.assertEqual(unknown_case["severity"], "info")
             self.assertEqual(unknown_case["evidence"][0]["value"], 1.0)
-            self.assertEqual(data["verdict"], "no_anomalies")
+            self.assertEqual(data["verdict"], "insufficient_data")
             self.assertEqual(data["coverage"]["process_attribution"]["status"], "degraded")
             self.assertIn("process_attribution_degraded", {item["code"] for item in warnings})
             self.assertIn("inspect_process_attribution", {item["code"] for item in actions})
@@ -310,7 +310,7 @@ class AuditTests(unittest.TestCase):
 
             self.assertEqual(data["coverage"]["latest_sample"], "2026-07-19T12:00:00+00:00")
             self.assertEqual(data["coverage"]["sample_age_seconds"], 60.0)
-            self.assertEqual(data["coverage"]["window_end_status"], "partial")
+            self.assertEqual(data["coverage"]["window_end_status"], "unknown")
             self.assertIn("partial_window_day", {item["code"] for item in warnings})
 
     def test_evidence_exposes_source_and_periodic_connection_pattern(self):

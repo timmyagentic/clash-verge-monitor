@@ -224,3 +224,28 @@ class BootstrapScriptTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RollbackTests(unittest.TestCase):
+    def test_rollback_preview_is_read_only_and_schema_guarded(self):
+        bootstrap=load_bootstrap_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);app=root/'app';agents=root/'agents';app.mkdir();agents.mkdir()
+            db=root/'db.sqlite';seed_database(db)
+            manifest={'runtime_python':sys.executable,'database':str(db),'version':'test','database_schema_max':2}
+            (app/'install.json').write_text(json.dumps(manifest))
+            for label in (bootstrap.SAMPLER_LABEL,bootstrap.WEB_LABEL):
+                (agents/f'{label}.plist').write_bytes(plistlib.dumps({'Label':label,'ProgramArguments':[sys.executable,'-m','clash_verge_traffic_ledger','run','--database',str(db)]}))
+            checkpoint=bootstrap.save_checkpoint(app,agents)
+            before=(app/'install.json').read_bytes()
+            args=['rollback','--app-root',app,'--launch-agents-dir',agents,'--checkpoint',checkpoint]
+            completed,doc=run_json(BOOTSTRAP,*args)
+            self.assertEqual(completed.returncode,0,doc)
+            self.assertTrue(doc['data']['dry_run'])
+            self.assertEqual(before,(app/'install.json').read_bytes())
+            completed,doc=run_json(BOOTSTRAP,*args,'--apply')
+            self.assertEqual(completed.returncode,0,doc)
+            saved=json.loads(checkpoint.read_text());saved['manifest']['database_schema_max']=0
+            checkpoint.write_text(json.dumps(saved))
+            completed,doc=run_json(BOOTSTRAP,*args)
+            self.assertNotEqual(completed.returncode,0)
+            self.assertIn('schema',doc['errors'][0]['message'])

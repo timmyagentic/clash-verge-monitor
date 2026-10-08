@@ -83,3 +83,17 @@ python3 scripts/bootstrap.py uninstall --apply --pretty
 ## Completion Evidence
 
 For installation, return the stable runtime path, adopted database path, both service states, and health status. For audits, return the requested window, active baseline days, exact cases inspected, evidence limitations, and a concise conclusion. Do not expose the full raw JSON unless the user asks for it.
+
+## Reliability candidate (0.4)
+
+Use `--controller auto` for current-user socket discovery; an explicit endpoint stays pinned.
+Health now uses successful sampling heartbeats, including idle polls. Legacy traffic timestamps
+cannot establish coverage. Policy v3 lowers confidence for partial/unknown coverage; do not
+reinterpret v2 case IDs as v3 cases. Re-run audit to obtain the current ID.
+
+For filtered drill-down use the runtime `explore` command (process, host, route, hour, minute,
+connection, rule, chain). Consult `retained_detail` before calling a partial result complete.
+`backup`, `restore`, `retention`, and `migrate` provide maintenance workflows. Restore always
+requires a new destination; restore, retention, migration and bootstrap rollback default to
+preview. Use the explicit apply/load flags only within the user's authorized maintenance scope.
+See the repository `docs/reliability.md` for the complete upgrade/rollback and measurement limits.

@@ -4,6 +4,18 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
+## [0.4.0rc1] - Unreleased
+
+### Added
+
+- Discover current-user Clash sockets and reconnect automatically in auto mode.
+- Track successful idle polls, coverage, failures, reset events and core-counter gaps.
+- Prevent concurrent samplers and reset baselines after outages, wake gaps and core resets.
+- Add transactional schema v2 migrations, hourly route aggregates and safe backup/restore.
+- Add filtered minute/connection/rule/chain exploration, CSV and local dashboard diagnostics.
+- Policy v3 treats unknown/partial coverage as provisional and never infers full days from traffic dates.
+- Configurable preview-first retention preserves daily and hourly summaries.
+
 ## [0.3.0] - 2026-08-15
 
 ### Added

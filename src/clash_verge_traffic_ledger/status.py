@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable
 
 from .reports import human_bytes
@@ -21,6 +22,8 @@ class LedgerStatus:
     today_upload_bytes: int
     today_download_bytes: int
     today_total_bytes: int
+    last_heartbeat: str | None = None
+    sampling_health: str = "unknown"
 
 
 def build_status(
@@ -31,7 +34,13 @@ def build_status(
 ) -> LedgerStatus:
     total = store.daily_total(date)
     state = service_state_reader(service_label) if service_label else None
+    sampling = store.sampling_state()
+    heartbeat = sampling.get('last_success')
+    age = (datetime.now().astimezone()-datetime.fromisoformat(heartbeat)).total_seconds() if heartbeat else None
+    sampling_health = 'healthy' if sampling.get('status')=='ok' and age is not None and 0 <= age <= 180 else ('degraded' if sampling else 'unknown')
     return LedgerStatus(
+        last_heartbeat=heartbeat,
+        sampling_health=sampling_health,
         database_path=str(store.path),
         database_exists=store.path.exists(),
         service_label=service_label,
@@ -53,6 +62,8 @@ def format_status(status: LedgerStatus, date: str) -> str:
         f"Service label: {status.service_label or 'not checked'}",
         f"Service state: {status.service_state or 'not checked'}",
         f"Latest sample: {status.latest_sample or 'none'}",
+        f"Sampling health: {status.sampling_health}",
+        f"Last heartbeat: {status.last_heartbeat or 'unknown'}",
         f"Raw delta rows: {status.raw_delta_rows}",
         f"Date: {date}",
         f"Today upload: {human_bytes(status.today_upload_bytes)}",

@@ -2,6 +2,8 @@
 
 日期：2026-07-02
 
+2026-10-08 补充：下文是历史立项与 0.3 状态。0.4.0rc1 本地候选已补齐可靠性、覆盖率、下钻和维护；见 [新版说明](reliability.md) 与 [验证记录](verification-0.4.0rc1.md)。候选实现不代表正式服务已升级。
+
 ## 一句话说明
 
 `clash-verge-traffic-ledger` 是一个面向 Clash Verge Rev 的本机流量账本工具。它通过 Mihomo controller 的 `/connections` 接口持续采样，把未来发生的连接流量按进程和主机写入 SQLite，从而回答“今天哪些应用用了多少代理流量”。

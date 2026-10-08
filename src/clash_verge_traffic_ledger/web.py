@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from html import escape
+import json
+from datetime import datetime, date as Date, timedelta
+from .dashboard import panels, STYLE, query_options, to_csv
+from .explore import explore
+from .audit import audit_traffic, find_case, build_evidence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -41,8 +46,8 @@ def _summary(status: LedgerStatus) -> str:
         f"<div><span>Upload</span><strong>{human_bytes(status.today_upload_bytes)}</strong></div>"
         f"<div><span>Download</span><strong>{human_bytes(status.today_download_bytes)}</strong></div>"
         f"<div><span>Rows</span><strong>{status.raw_delta_rows}</strong></div>"
-        f"<div><span>Sampler</span><strong>{service_state}</strong></div>"
-        f"<div><span>Latest sample</span><strong>{latest}</strong></div>"
+        f"<div><span>Service process</span><strong>{service_state}</strong></div>"
+        f"<div><span>Latest traffic</span><strong>{latest}</strong></div>"
         "</section>"
     )
 
@@ -51,11 +56,11 @@ def _trend(rows: list[dict[str, int | str]]) -> str:
     peak = max((int(row["total_bytes"]) for row in rows), default=0)
     body = "\n".join(
         "<tr>"
-        f"<td>{escape(str(row['date']))}</td>"
+        f"<td>{escape(str(row['date']))} · {escape(str(row.get('coverage','unknown')))}</td>"
         "<td><div class=\"bar-track\">"
         f"<span class=\"bar\" style=\"width: {0 if peak == 0 else int(int(row['total_bytes']) / peak * 100)}%\"></span>"
         "</div></td>"
-        f"<td>{human_bytes(int(row['total_bytes']))}</td>"
+        f"<td>{human_bytes(int(row['total_bytes'])) if int(row['total_bytes']) else '— 无流量记录'}</td>"
         "</tr>"
         for row in rows
     )
@@ -87,13 +92,19 @@ def render_dashboard(
     date: str,
     status: LedgerStatus | None = None,
     anomaly_byte_threshold: int = 500 * 1024 * 1024,
+    options: dict | None = None,
 ) -> str:
-    current_status = status or build_status(store, date)
+    current_status = status or build_status(store, date, service_label=None)
     process_rows = store.daily_process(date, limit=20)
     host_rows = store.daily_host(date, limit=20)
     trend_rows = store.daily_totals(date, days=7)
+    day_coverage = {d['date']: d['status'] for d in store.coverage((Date.fromisoformat(date)-timedelta(days=6)).isoformat(),date)['days']}
+    for row in trend_rows:
+        row['coverage'] = day_coverage[row['date']]
+    options = options or dict(start=date,end=date,by='process',process='',host='',route='')
+    detail = panels(store,options)
     return f"""<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -226,6 +237,7 @@ def render_dashboard(
         padding: 10px 8px;
       }}
     }}
+    {STYLE}
   </style>
 </head>
 <body>
@@ -234,11 +246,14 @@ def render_dashboard(
       <h1>Clash Verge Traffic Ledger</h1>
       <div class="date">{escape(date)}</div>
     </header>
+    {detail}
+    <details><summary>结束日期的全部接管流量与最近 7 日趋势（不随上方筛选改变）</summary>
     {_summary(current_status)}
     {_trend(trend_rows)}
-    {_anomaly_panel(store, date, anomaly_byte_threshold)}
+    <section><h2>异常提示说明</h2><p>流量变化、应用归属缺口与采集故障分开解释。覆盖不完整时降低结论置信度；统计峰值不是恶意判定。使用上方异常证据入口查看基线和限制。</p></section>
     {_table("Traffic by process", "process", process_rows)}
     {_table("Traffic by host", "host", host_rows)}
+    </details>
   </main>
 </body>
 </html>
@@ -248,25 +263,55 @@ def render_dashboard(
 def serve_dashboard(store: LedgerStore, host: str, port: int) -> None:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            # Loopback-only and Host/Origin validation prevent DNS rebinding reads.
+            allowed = {f'127.0.0.1:{port}',f'localhost:{port}'}
+            if self.headers.get('Host') not in allowed:
+                self.send_error(403); return
+            origin = self.headers.get('Origin')
+            if origin and origin not in {f'http://{h}' for h in allowed}:
+                self.send_error(403); return
             parsed = urlparse(self.path)
-            if parsed.path not in {"/", "/index.html"}:
-                self.send_error(404)
-                return
             query = parse_qs(parsed.query)
-            date = query.get("date", [""])[0]
-            if not date:
-                from datetime import datetime
-
-                date = datetime.now().astimezone().date().isoformat()
-            body = render_dashboard(store, date).encode("utf-8")
+            try:
+                date = query.get('date',[datetime.now().astimezone().date().isoformat()])[0]
+                Date.fromisoformat(date)
+                options = query_options(query,date)
+                if parsed.path in ('/','/index.html'):
+                    body = render_dashboard(store,options['end'],options=options).encode('utf-8')
+                    mime = 'text/html; charset=utf-8'
+                elif parsed.path in ('/api/explore','/export.csv'):
+                    data = explore(store,**options,limit=100)
+                    body = (to_csv(data) if parsed.path == '/export.csv' else json.dumps(data,ensure_ascii=False)).encode('utf-8')
+                    mime = 'text/csv; charset=utf-8' if parsed.path == '/export.csv' else 'application/json'
+                elif parsed.path == '/api/evidence':
+                    case = find_case(store,query.get('case_id',[''])[0])
+                    body = json.dumps(build_evidence(store,case,limit=12),ensure_ascii=False).encode('utf-8')
+                    mime = 'application/json'
+                elif parsed.path == '/api/audit':
+                    data,warnings,actions = audit_traffic(store,options['end'],window_days=7,baseline_days=30)
+                    body = json.dumps(dict(data=data,warnings=warnings,next_actions=actions),ensure_ascii=False).encode('utf-8')
+                    mime = 'application/json'
+                else:
+                    self.send_error(404); return
+            except (ValueError,TypeError):
+                self.send_error(400,'Invalid date, filter, or range'); return
+            except Exception:
+                self.send_error(503,'Ledger unavailable'); return
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
+            self.send_header('Content-Type',mime)
+            self.send_header('Content-Length',str(len(body)))
+            self.send_header('Cache-Control','no-store')
+            self.send_header('X-Content-Type-Options','nosniff')
+            self.send_header('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+            if parsed.path == '/export.csv':
+                self.send_header('Content-Disposition','attachment; filename="traffic.csv"')
             self.end_headers()
             self.wfile.write(body)
 
         def log_message(self, format: str, *args: object) -> None:
             return
 
+    if host not in ('127.0.0.1','localhost'):
+        raise ValueError('Dashboard only supports loopback access')
     with ThreadingHTTPServer((host, port), Handler) as server:
         server.serve_forever()

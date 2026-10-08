@@ -13,7 +13,7 @@ from lib.output import action, emit, error, payload
 from lib.paths import default_app_root, discover_source, load_manifest
 
 
-DEFAULT_CONTROLLER = "/tmp/verge/verge-mihomo.sock"
+DEFAULT_CONTROLLER = "auto"
 DEFAULT_LABEL = "com.timmy.clash-verge-traffic-ledger"
 
 
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     health = commands.add_parser("health", help="Check installation, sampler, database, and controller")
     add_runtime_args(health)
-    health.add_argument("--controller", default=DEFAULT_CONTROLLER)
+    health.add_argument("--controller", default=None)
     health.add_argument("--secret-file", default=None)
     health.add_argument("--service-label", default=DEFAULT_LABEL)
     health.add_argument("--max-sample-age", type=float, default=180.0)
@@ -158,6 +158,9 @@ def invoke(args: argparse.Namespace) -> int:
         )
         return 3
 
+    if args.command == 'health' and args.controller is None:
+        manifest = load_manifest(Path(args.app_root).expanduser().resolve()) or {}
+        args.controller = manifest.get('controller') or DEFAULT_CONTROLLER
     completed = subprocess.run(
         [str(runtime_python), *core_arguments(args, database)],
         capture_output=True,

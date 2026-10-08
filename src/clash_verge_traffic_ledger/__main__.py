@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from .contracts import (
 )
 from .health import inspect_health, summarize_attribution
 from .monitor import Sampler
+from .locking import writer_lock
 from .process_lookup import capture_process_lookup, lsof_path
 from .reports import export_csv, export_markdown, format_report
 from .service import (
@@ -47,8 +49,8 @@ DEFAULT_ANOMALY_BYTE_THRESHOLD = 500 * 1024 * 1024
 def add_controller_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--controller",
-        default=DEFAULT_UNIX_SOCKET,
-        help="Mihomo controller URL or unix socket path",
+        default="auto",
+        help="auto, Mihomo controller URL, or an explicit unix socket path",
     )
     parser.add_argument("--secret", default=None, help="Mihomo controller secret")
     parser.add_argument("--secret-file", default=None, help="Read the controller secret from a file")
@@ -119,6 +121,11 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 
 def command_run(args: argparse.Namespace) -> int:
+    with writer_lock(args.database):
+        return _run_locked(args)
+
+
+def _run_locked(args: argparse.Namespace) -> int:
     client = build_client(args)
     store = LedgerStore(args.database)
     sampler = Sampler(
@@ -148,7 +155,7 @@ def rows_for(args: argparse.Namespace, store: LedgerStore) -> tuple[str, str, li
 
 
 def command_today(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date, key, rows = rows_for(args, store)
     title = f"Traffic by {key}"
     print(format_report(date, rows, title=title, key=key))
@@ -156,7 +163,7 @@ def command_today(args: argparse.Namespace) -> int:
 
 
 def command_export(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date, key, rows = rows_for(args, store)
     title = f"Traffic by {key}"
     if args.format == "csv":
@@ -168,7 +175,7 @@ def command_export(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date = report_date(args)
     service_label = None if args.no_service_check else args.service_label
     print(format_status(build_status(store, date, service_label=service_label), date))
@@ -176,7 +183,7 @@ def command_status(args: argparse.Namespace) -> int:
 
 
 def command_anomalies(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     date = report_date(args)
     anomalies = detect_anomalies(
         store,
@@ -379,7 +386,7 @@ def command_maintenance(args: argparse.Namespace) -> int:
 
 
 def command_web(args: argparse.Namespace) -> int:
-    store = LedgerStore(args.database)
+    store = LedgerStore(args.database, read_only=True)
     print(f"serving http://{args.host}:{args.port}/")
     serve_dashboard(store, args.host, args.port)
     return 0
@@ -471,6 +478,36 @@ def command_uninstall_service(args: argparse.Namespace) -> int:
         print(f"removed {plist_path}")
     else:
         print(f"left plist at {plist_path}")
+    return 0
+
+
+def command_explore(args):
+    from .explore import explore
+    data = explore(LedgerStore(args.database,read_only=True),args.start,args.end,
+        by=args.by,process=args.process,host=args.host,route=args.route,limit=args.limit,offset=args.offset,sort=args.sort)
+    print(render_json(envelope('explore',data),pretty=args.pretty))
+    return 0
+
+
+def command_storage(args):
+    from .maintenance import backup_database, restore_database, retention
+    if args.command == 'backup':
+        data = backup_database(args.database,args.output)
+    elif args.command == 'restore':
+        data = restore_database(args.database,args.output,args.apply)
+    elif args.command == 'migrate':
+        if not args.apply:
+            data = {'apply':False,'schema_target':2,'database':args.database}
+        else:
+            with writer_lock(args.database):
+                LedgerStore(args.database)
+            data = {'apply':True,'schema_target':2}
+    elif args.apply:
+        with writer_lock(args.database):
+            data = retention(LedgerStore(args.database),args.config,True)
+    else:
+        data = retention(LedgerStore(args.database,read_only=True),args.config)
+    print(render_json(envelope(args.command,data),pretty=args.pretty))
     return 0
 
 
@@ -606,13 +643,44 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall_service.add_argument("--keep-plist", action="store_true")
     uninstall_service.set_defaults(func=command_uninstall_service)
 
+    explore_parser = subparsers.add_parser('explore',help='Filter and drill down into retained traffic')
+    add_database_arg(explore_parser)
+    add_json_arg(explore_parser)
+    explore_parser.add_argument('--start',required=True)
+    explore_parser.add_argument('--end',required=True)
+    explore_parser.add_argument('--by',choices=['process','host','route','hour','minute','connection','rule','chain'],default='process')
+    for key in ('process','host','route'):
+        explore_parser.add_argument('--'+key,default='')
+    explore_parser.add_argument('--limit',type=int,default=50)
+    explore_parser.add_argument('--offset',type=int,default=0)
+    explore_parser.add_argument('--sort',choices=['total','upload','download','time'],default='total')
+    explore_parser.set_defaults(func=command_explore)
+    for name in ('backup','restore','retention','migrate'):
+        p = subparsers.add_parser(name)
+        add_database_arg(p)
+        add_json_arg(p)
+        if name in ('backup','restore'):
+            p.add_argument('--output',required=True)
+        if name != 'backup':
+            p.add_argument('--apply',action='store_true')
+        if name == 'retention':
+            p.add_argument('--config',default=None,help='TOML retention policy')
+        p.set_defaults(func=command_storage)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        if args.command in ('maintenance','prune','compact') and args.apply:
+            with writer_lock(args.database):
+                return int(args.func(args))
+        return int(args.func(args))
+    except (ValueError, RuntimeError, OSError, sqlite3.Error) as exc:
+        print(render_json(envelope(args.command,None,ok=False,
+            errors=[error_item(type(exc).__name__,str(exc))])),file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

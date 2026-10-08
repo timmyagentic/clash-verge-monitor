@@ -61,6 +61,7 @@ def probe_controller(config: ControllerConfig) -> dict[str, Any]:
     )
     return {
         "reachable": True,
+        "resolved_target": client.resolved_controller,
         "version": version,
         "connection_count": len(connections),
         "attribution": summarize_attribution(connections, process_lookup=process_lookup),
@@ -73,7 +74,7 @@ def _sample_age(latest_sample: str | None, now: datetime) -> float | None:
     sampled_at = datetime.fromisoformat(latest_sample)
     if sampled_at.tzinfo is None:
         sampled_at = sampled_at.replace(tzinfo=timezone.utc)
-    return max(0.0, (now.astimezone(timezone.utc) - sampled_at.astimezone(timezone.utc)).total_seconds())
+    return (now.astimezone(timezone.utc) - sampled_at.astimezone(timezone.utc)).total_seconds()
 
 
 def inspect_health(
@@ -105,13 +106,18 @@ def inspect_health(
         try:
             store = LedgerStore(path, read_only=True)
             latest_sample = store.latest_delta_timestamp()
-            age = _sample_age(latest_sample, timestamp)
+            state = store.sampling_state()
+            heartbeat = state.get('last_success')
+            age = _sample_age(heartbeat, timestamp)
+            database_data['heartbeat'] = state
+            database_data['coverage'] = store.coverage(timestamp.astimezone().date().isoformat(), timestamp.astimezone().date().isoformat(), now=timestamp.astimezone())
+            database_data['last_traffic_age_seconds'] = _sample_age(latest_sample, timestamp)
             database_data.update(
                 {
                     "readable": True,
                     "latest_sample": latest_sample,
                     "sample_age_seconds": round(age, 3) if age is not None else None,
-                    "fresh": age is not None and age <= max_sample_age_seconds,
+                    "fresh": age is not None and 0 <= age <= max_sample_age_seconds and state.get("status") == "ok",
                     "rollup_bounds": store.rollup_bounds(),
                 }
             )
@@ -145,13 +151,13 @@ def inspect_health(
             controller_data.update(
                 {
                     "reachable": False,
-                    "error": f"{type(exc).__name__}: {exc}",
+                    "error": type(exc).__name__,
                 }
             )
             warnings.append(
                 warning_item("controller_unreachable", "The Clash Verge/Mihomo controller is unreachable.")
             )
-            next_actions.append(action_item("start_clash_verge", "Start Clash Verge and retry the health check."))
+            next_actions.append(action_item("start_clash_verge", "Check controller discovery or the explicitly configured endpoint; a running process is not proof of reachability."))
 
     attribution = controller_data.get("attribution")
     attribution_ready = True

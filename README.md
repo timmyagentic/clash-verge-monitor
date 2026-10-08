@@ -6,9 +6,17 @@ The runtime records future traffic from the Mihomo controller, attributes bytes 
 
 For the full Chinese project context and current MVP status, see [docs/project-brief.zh-CN.md](docs/project-brief.zh-CN.md).
 
+## Reliability candidate
+
+The current local candidate is `0.4.0rc1` (Unreleased). It adds automatic controller
+rediscovery, independent sampling heartbeats and coverage, policy v3, hourly route
+summaries, filtered drill-down, and guarded backup/restore/retention/rollback.
+See [the reliability guide](docs/reliability.md) for usage, migration and limits.
+A local candidate is not evidence of a published release or an upgraded installed service.
+
 ## Release status
 
-The current release line is `0.3.0`, which packages the policy-v2 auditor
+The previous documented release line is `0.3.0`, which packages the policy-v2 auditor
 hardening. Formal artifacts belong to the immutable
 [`v0.3.0` GitHub Release](https://github.com/timmyagentic/clash-verge-traffic-ledger/releases/tag/v0.3.0).
 A version in source or a local installation alone is not publication proof; see
@@ -33,11 +41,11 @@ This repo intentionally keeps the first version small and local. It borrows prov
 
 ## MVP
 
-- Connect to Clash Verge Rev through the default unix socket: `/tmp/verge/verge-mihomo.sock`.
+- Discover the current-user service socket automatically; explicit endpoints remain pinned.
 - Optionally connect to an HTTP controller for non-Verge Mihomo setups.
 - Poll `/connections` at a configurable interval.
 - Compute byte deltas per Mihomo connection id.
-- Treat first-seen connections as a baseline, so old bytes are not counted as new monitor usage.
+- Baseline pre-existing connections; count initial bytes only when a start timestamp proves a connection began within a continuously sampled interval.
 - Attribute process from Mihomo metadata first, then capture at most one TCP/UDP `lsof` socket table after each controller snapshot that still needs localhost or TUN fallback attribution.
 - Store raw deltas and daily rollups in SQLite.
 - Provide CLI commands for `doctor`, `run`, `today`, and `export`.
