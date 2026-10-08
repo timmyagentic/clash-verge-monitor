@@ -25,3 +25,6 @@ Issues = "https://github.com/timmyagentic/clash-verge-traffic-ledger/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+clash_verge_traffic_ledger = ["assets/*.js", "assets/*.css", "assets/*.md", "assets/icons/*.svg", "assets/icons/LICENSE"]

@@ -142,3 +142,16 @@ cannot be written into plist arguments.
 - Applied compaction deletes raw drill-down history before the chosen cutoff, preserves daily rollups, and runs SQLite `VACUUM` to reclaim file space.
 - The Web UI is intentionally read-only and local. It shows summary cards, a 7-day trend, anomaly hints, process totals, and host totals. The authoritative data remains in SQLite.
 - Anomaly cases are deterministic evidence, not malware verdicts. High volume and `unknown` attribution require contextual review.
+
+## Dashboard candidate
+
+The 0.4 local dashboard now opens with a traffic overview, upload/download trend,
+application ranking and destinations. Select a date or proxy/direct scope; open
+an application or destination to inspect retained minute/connection details.
+The History tab shows the preceding seven days. Sampling details are collapsed
+by default, and dates without coverage display unknown rather than fabricated zero usage.
+
+Chart.js 4.4.8 and Tabler Icons 3.31.0 are bundled locally under package assets
+with their licenses. There are no runtime CDN requests. The visual QA record is
+[design-qa.md](design-qa.md). The installed production service is not changed by
+opening this candidate preview.

@@ -323,8 +323,11 @@ def command_status(args: argparse.Namespace) -> int:
 
 def runtime_digest(source: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted((source / 'src' / 'clash_verge_traffic_ledger').glob('*.py')):
-        digest.update(path.name.encode())
+    package = source / 'src' / 'clash_verge_traffic_ledger'
+    for path in sorted(package.rglob('*')):
+        if not path.is_file() or '__pycache__' in path.parts or path.suffix == '.pyc':
+            continue
+        digest.update(str(path.relative_to(package)).encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()[:16]
 

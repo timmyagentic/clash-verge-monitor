@@ -6,6 +6,8 @@ from datetime import datetime, date as Date, timedelta
 from .dashboard import panels, STYLE, query_options, to_csv
 from .explore import explore
 from .audit import audit_traffic, find_case, build_evidence
+from .overview import render_overview, render_details
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -276,11 +278,28 @@ def serve_dashboard(store: LedgerStore, host: str, port: int) -> None:
                 date = query.get('date',[datetime.now().astimezone().date().isoformat()])[0]
                 Date.fromisoformat(date)
                 options = query_options(query,date)
-                if parsed.path in ('/','/index.html'):
-                    body = render_dashboard(store,options['end'],options=options).encode('utf-8')
+                if parsed.path.startswith('/assets/'):
+                    relative = parsed.path[len('/assets/'):]
+                    asset_root = Path(__file__).parent / 'assets'
+                    target = (asset_root / relative).resolve()
+                    if not target.is_relative_to(asset_root.resolve()) or not target.is_file():
+                        self.send_error(404); return
+                    types={'.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'}
+                    if target.suffix not in types:
+                        self.send_error(404); return
+                    body=target.read_bytes();mime=types[target.suffix]
+                elif parsed.path in ('/','/index.html'):
+                    view=query.get('view',['overview'])[0]
+                    if view not in ('overview','history','details'):
+                        raise ValueError('Unknown view')
+                    # Validate legacy range parameters even when displaying the overview.
+                    from .explore import validate_range
+                    validate_range(options['start'], options['end'])
+                    html=render_details(store,options['end'],options) if view=='details' else render_overview(store,options['end'],view,options['route'])
+                    body = html.encode('utf-8')
                     mime = 'text/html; charset=utf-8'
                 elif parsed.path in ('/api/explore','/export.csv'):
-                    data = explore(store,**options,limit=100)
+                    data = explore(store,**options,limit=min(100,max(1,int(query.get('limit',['50'])[0]))))
                     body = (to_csv(data) if parsed.path == '/export.csv' else json.dumps(data,ensure_ascii=False)).encode('utf-8')
                     mime = 'text/csv; charset=utf-8' if parsed.path == '/export.csv' else 'application/json'
                 elif parsed.path == '/api/evidence':
@@ -302,7 +321,7 @@ def serve_dashboard(store: LedgerStore, host: str, port: int) -> None:
             self.send_header('Content-Length',str(len(body)))
             self.send_header('Cache-Control','no-store')
             self.send_header('X-Content-Type-Options','nosniff')
-            self.send_header('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+            self.send_header('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
             if parsed.path == '/export.csv':
                 self.send_header('Content-Disposition','attachment; filename="traffic.csv"')
             self.end_headers()

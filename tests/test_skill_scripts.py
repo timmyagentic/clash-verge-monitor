@@ -249,3 +249,13 @@ class RollbackTests(unittest.TestCase):
             completed,doc=run_json(BOOTSTRAP,*args)
             self.assertNotEqual(completed.returncode,0)
             self.assertIn('schema',doc['errors'][0]['message'])
+
+class AssetRuntimeTests(unittest.TestCase):
+    def test_assets_participate_in_runtime_identity(self):
+        bootstrap=load_bootstrap_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);package=root/'src'/'clash_verge_traffic_ledger';(package/'assets').mkdir(parents=True)
+            (package/'__init__.py').write_text('')
+            css=package/'assets'/'dashboard.css';css.write_text('before')
+            before=bootstrap.runtime_digest(root);css.write_text('after')
+            self.assertNotEqual(before,bootstrap.runtime_digest(root))

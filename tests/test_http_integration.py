@@ -90,6 +90,10 @@ class DashboardHTTPTests(unittest.TestCase):
                 self.assertIn("frame-ancestors", r.getheader("Content-Security-Policy"))
                 for url, headers, expected in [
                     ("/?start=invalid", {}, 400),
+                    ("/assets/dashboard.css", {}, 200),
+                    ("/assets/dashboard.js", {}, 200),
+                    ("/assets/icons/world.svg", {}, 200),
+                    ("/assets/../../pyproject.toml", {}, 404),
                     ("/?start=2020-01-01&end=2026-10-08", {}, 400),
                     ("/", {"Host": "evil.test"}, 403),
                     ("/", {"Origin": "http://evil.test"}, 403),
