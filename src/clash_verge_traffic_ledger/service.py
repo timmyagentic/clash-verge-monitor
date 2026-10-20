@@ -89,12 +89,15 @@ def service_state(
     runner: Runner = subprocess.run,
 ) -> str:
     domain = f"gui/{os.getuid()}/{label}"
-    completed = runner(
-        ["launchctl", "print", domain],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = runner(
+            ["launchctl", "print", domain],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return "unavailable"
     if completed.returncode != 0:
         return "not loaded"
     output = completed.stdout or ""

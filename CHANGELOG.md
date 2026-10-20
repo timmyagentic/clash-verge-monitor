@@ -32,6 +32,7 @@ runtime.
 - Preserve schema v2 and existing raw, daily, hourly and heartbeat history when updating an existing candidate installation. Upgrading from `0.3.0` adds schema v2 tables after a guarded backup; it does not delete history.
 - Agent HTTP results are under `data`; CLI/HTTP query responses include coverage, provenance and explicit unknown/zero states. Consumers of the old HTTP shape must use the documented envelope.
 - Close test SQLite connections explicitly to remove ResourceWarning noise.
+- Report launchd status as unavailable when `launchctl` is absent, so portable reporting and non-loaded bootstrap inspection work on Linux.
 
 ## [0.3.0] - 2026-08-15
 

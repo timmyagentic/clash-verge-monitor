@@ -37,6 +37,12 @@ def delta(ts, process, host, upload, download):
 
 
 class ServiceTests(unittest.TestCase):
+    def test_missing_launchctl_is_unavailable_instead_of_crashing(self):
+        def missing_runner(*args, **kwargs):
+            raise FileNotFoundError("launchctl")
+
+        self.assertEqual(service_state(runner=missing_runner), "unavailable")
+
     def test_builds_launchd_plist_for_sampler(self):
         payload = build_launchd_plist(
             label="com.example.ledger",
