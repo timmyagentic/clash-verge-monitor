@@ -69,3 +69,10 @@ write secrets into plist arguments, logs, JSON, or fixtures. Use
 `MIHOMO_SECRET` interactively or a mode-600 secret file for launchd. Audits must
 open existing databases read-only; destructive maintenance requires an explicit
 `--apply` after reviewing the dry run.
+
+## Merge and Release Policy
+
+- Stable releases advance one patch on the current line (`0.3.0` → `0.3.1` → `0.3.2`); do not introduce minor/major jumps or publish the former `0.4.0rc1` label.
+- Main accepts squash merges through PRs after all six required CI checks, an up-to-date base and resolved discussions. No bypass actors are configured. Recheck the exact head and merge with `--match-head-commit`; never use `--admin`.
+- Release tags are immutable. A tag must point to verified current main; the Release workflow repeats CI, validates distributions and installs the wheel before publishing.
+- Never equate the application version with the database schema. Upgrade an existing schema v2 ledger in place without retention, compaction or row rewriting. Record pre/post preservation and live service evidence.

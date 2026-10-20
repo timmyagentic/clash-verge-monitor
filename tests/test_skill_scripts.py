@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -80,6 +81,12 @@ def load_bootstrap_module():
 
 
 class BootstrapScriptTests(unittest.TestCase):
+    def test_missing_launchctl_status_is_unavailable(self):
+        bootstrap = load_bootstrap_module()
+        with patch.object(bootstrap.subprocess, "run", side_effect=FileNotFoundError("launchctl")):
+            self.assertEqual(bootstrap.launchctl_details("test"),
+                             {"state": "unavailable", "plist": None})
+
     def test_source_modified_includes_untracked_files(self):
         bootstrap = load_bootstrap_module()
         with tempfile.TemporaryDirectory() as tmp:

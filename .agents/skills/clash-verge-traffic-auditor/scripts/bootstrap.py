@@ -140,12 +140,15 @@ def parse_launchctl_output(output: str) -> dict[str, str | None]:
 
 
 def launchctl_details(label: str) -> dict[str, str | None]:
-    completed = subprocess.run(
-        ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {"state": "unavailable", "plist": None}
     if completed.returncode != 0:
         return {"state": "not loaded", "plist": None}
     return parse_launchctl_output(completed.stdout)

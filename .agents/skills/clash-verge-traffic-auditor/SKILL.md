@@ -95,7 +95,7 @@ python3 scripts/bootstrap.py uninstall --apply --pretty
 
 For installation, return the stable runtime path, adopted database path, both service states, and health status. For audits, return the requested window, active baseline days, exact cases inspected, evidence limitations, and a concise conclusion. Do not expose the full raw JSON unless the user asks for it.
 
-## Reliability candidate (0.4)
+## Reliability (0.3.1 and later)
 
 Use `--controller auto` for current-user socket discovery; an explicit endpoint stays pinned.
 Health now uses successful sampling heartbeats, including idle polls. Legacy traffic timestamps

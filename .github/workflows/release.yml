@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - name: Require the tagged commit to be current main
+        run: test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python scripts/check_repository_policy.py --tag "$RELEASE_TAG"
+      - run: python -m build
+      - run: python -m twine check dist/*.whl dist/*.tar.gz
+      - run: python scripts/check_release.py --tag "$RELEASE_TAG" --dist-dir dist --notes-output dist/release-notes.md
+      - run: python scripts/verify_distribution.py --dist-dir dist --write-checksums
+      - name: Publish immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          dist/*.whl dist/*.tar.gz dist/SHA256SUMS
+          --verify-tag --title "$RELEASE_TAG"
+          --notes-file dist/release-notes.md
