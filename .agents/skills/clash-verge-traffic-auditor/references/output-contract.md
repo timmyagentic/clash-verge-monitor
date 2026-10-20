@@ -10,7 +10,7 @@ argparse usage text for invalid arguments.
 ```json
 {
   "schema_version": "1",
-  "runtime": {"name": "clash-verge-traffic-ledger", "version": "0.4.0rc1"},
+  "runtime": {"name": "clash-verge-traffic-ledger", "version": "0.3.1"},
   "ok": true,
   "operation": "audit",
   "generated_at": "2026-07-19T10:00:00+00:00",

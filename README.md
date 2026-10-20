@@ -8,13 +8,13 @@ The runtime records future traffic from the Mihomo controller, attributes bytes 
 
 For the full Chinese project context and current MVP status, see [docs/project-brief.zh-CN.md](docs/project-brief.zh-CN.md).
 
-## Reliability candidate
+## Current release
 
-The current local candidate is `0.4.0rc1` (Unreleased). It adds automatic controller
-rediscovery, independent sampling heartbeats and coverage, policy v3, hourly route
-summaries, filtered drill-down, and guarded backup/restore/retention/rollback.
-See [the reliability guide](docs/reliability.md) for usage, migration and limits.
-A local candidate is not evidence of a published release or an upgraded installed service.
+`0.3.1` includes automatic controller discovery/reconnection, independent sampling
+heartbeats and coverage, policy v3, the overview dashboard, filtered queries, and
+guarded backup/restore/retention. The previously unpublished `0.4.0rc1` candidate
+is included in this patch release. Future stable versions advance sequentially
+within the `0.3.x` line. See [the reliability guide](docs/reliability.md).
 
 ## Agent queries
 
@@ -36,13 +36,17 @@ for empty/missing data states, error codes, HTTP compatibility, and live-read li
 
 ## Release status
 
-The previous documented release line is `0.3.0`, which packages the policy-v2 auditor
-hardening. Formal artifacts belong to the immutable
-[`v0.3.0` GitHub Release](https://github.com/timmyagentic/clash-verge-traffic-ledger/releases/tag/v0.3.0).
-A version in source or a local installation alone is not publication proof; see
-[CHANGELOG.md](CHANGELOG.md) for the release notes and
-[docs/releasing.md](docs/releasing.md) for the clean-source, build, publication,
-download, and deployment verification gates.
+The stable release is [`v0.3.1`](https://github.com/timmyagentic/clash-verge-traffic-ledger/releases/tag/v0.3.1).
+GitHub Release provides the wheel, source archive and SHA-256 checksums.
+[CI](https://github.com/timmyagentic/clash-verge-traffic-ledger/actions/workflows/ci.yml)
+checks four OS/Python combinations, repository policy, and distribution builds and
+fresh wheel installation. Main requires an up-to-date PR, all six checks and
+resolved discussions, with no bypass actors. See [CONTRIBUTING.md](CONTRIBUTING.md)
+and [the release process](docs/releasing.md).
+
+Publication, source and installation are checked separately. Use bootstrap status
+and health to inspect this Mac. Upgrading an existing schema v2 candidate adopts
+the same database without deleting or rebuilding its history.
 
 ## Why this project exists
 
@@ -163,9 +167,9 @@ cannot be written into plist arguments.
 - The Web UI is intentionally read-only and local. It shows summary cards, a 7-day trend, anomaly hints, process totals, and host totals. The authoritative data remains in SQLite.
 - Anomaly cases are deterministic evidence, not malware verdicts. High volume and `unknown` attribution require contextual review.
 
-## Dashboard candidate
+## Dashboard
 
-The 0.4 local dashboard now opens with a traffic overview, upload/download trend,
+The local dashboard now opens with a traffic overview, upload/download trend,
 application ranking and destinations. Select a date or proxy/direct scope; open
 an application or destination to inspect retained minute/connection details.
 The History tab shows the preceding seven days. Sampling details are collapsed
@@ -173,5 +177,4 @@ by default, and dates without coverage display unknown rather than fabricated ze
 
 Chart.js 4.4.8 and Tabler Icons 3.31.0 are bundled locally under package assets
 with their licenses. There are no runtime CDN requests. The visual QA record is
-[design-qa.md](design-qa.md). The installed production service is not changed by
-opening this candidate preview.
+[design-qa.md](design-qa.md). Opening a source preview does not upgrade the installed service.

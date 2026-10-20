@@ -4,9 +4,11 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
-## [0.4.0rc1] - Unreleased
+## [0.3.1] - 2026-10-20
 
 ### Added
+
+- CI across macOS/Linux and Python 3.11/3.14, distribution install checks, protected PR merges, immutable release tags and a verified tag-to-Release workflow.
 
 - Add the public product website with release-aware setup, local-data boundaries and deployment configuration.
 
@@ -23,6 +25,13 @@ runtime.
 - Add filtered minute/connection/rule/chain exploration, CSV and local dashboard diagnostics.
 - Policy v3 treats unknown/partial coverage as provisional and never infers full days from traffic dates.
 - Configurable preview-first retention preserves daily and hourly summaries.
+
+### Release and compatibility
+
+- Publish the previously untagged `0.4.0rc1` work as `0.3.1`; no `0.4` stable release exists. Future stable releases advance one patch within the current release line.
+- Preserve schema v2 and existing raw, daily, hourly and heartbeat history when updating an existing candidate installation. Upgrading from `0.3.0` adds schema v2 tables after a guarded backup; it does not delete history.
+- Agent HTTP results are under `data`; CLI/HTTP query responses include coverage, provenance and explicit unknown/zero states. Consumers of the old HTTP shape must use the documented envelope.
+- Close test SQLite connections explicitly to remove ResourceWarning noise.
 
 ## [0.3.0] - 2026-08-15
 

@@ -1,3 +1,4 @@
+from contextlib import closing
 import json
 import sqlite3
 import tempfile
@@ -159,7 +160,7 @@ class ExtendedReliabilityTests(unittest.TestCase):
             explore(self.store, "2026-10-08", "2026-10-08", by="DROP TABLE")
 
     def test_legacy_read_is_nonmutating_and_migration_idempotent(self):
-        with self.store.connect() as c:
+        with closing(self.store.connect()) as c, c:
             for table in (
                 "hourly_traffic",
                 "sample_minutes",
@@ -174,11 +175,11 @@ class ExtendedReliabilityTests(unittest.TestCase):
         self.assertEqual(before, self.store.path.read_bytes())
         LedgerStore(self.store.path)
         LedgerStore(self.store.path)
-        with self.store.connect() as c:
+        with closing(self.store.connect()) as c, c:
             self.assertEqual(c.execute("pragma user_version").fetchone()[0], 2)
 
     def test_newer_schema_refused_without_modification(self):
-        with self.store.connect() as c:
+        with closing(self.store.connect()) as c, c:
             c.execute("pragma user_version=999")
         before = self.store.path.read_bytes()
         with self.assertRaises(RuntimeError):
@@ -186,7 +187,7 @@ class ExtendedReliabilityTests(unittest.TestCase):
         self.assertEqual(before, self.store.path.read_bytes())
 
     def test_complete_day_requires_measured_coverage(self):
-        with self.store.connect() as c:
+        with closing(self.store.connect()) as c, c:
             c.executemany(
                 "INSERT INTO sample_minutes(minute,covered_seconds,successes) VALUES (?,60,60)",
                 [(f"2026-10-07T{h:02}:{m:02}",) for h in range(24) for m in range(60)],

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from email.parser import Parser
 from pathlib import Path
 import re
 import subprocess
@@ -90,6 +91,27 @@ def distribution_errors(dist_dir: Path, version: str) -> list[str]:
 
     with zipfile.ZipFile(wheel) as archive:
         wheel_names = archive.namelist()
+        metadata_name = f"{normalized_name}-{version}.dist-info/METADATA"
+        if metadata_name in wheel_names:
+            metadata = Parser().parsestr(archive.read(metadata_name).decode("utf-8"))
+            if metadata.get("Version") != version:
+                errors.append("wheel metadata version does not match source")
+        asset_root = ROOT / "src/clash_verge_traffic_ledger/assets"
+        for asset in asset_root.rglob("*"):
+            if not asset.is_file():
+                continue
+            member = "clash_verge_traffic_ledger/assets/" + asset.relative_to(asset_root).as_posix()
+            if member not in wheel_names or archive.read(member) != asset.read_bytes():
+                errors.append(f"wheel asset missing or changed: {member}")
+    with tarfile.open(sdist, "r:gz") as archive:
+        members = {member.name: member for member in archive.getmembers() if member.isfile()}
+        for asset in (ROOT / "src/clash_verge_traffic_ledger/assets").rglob("*"):
+            if not asset.is_file():
+                continue
+            suffix = "/src/clash_verge_traffic_ledger/assets/" + asset.relative_to(asset_root).as_posix()
+            matches = [name for name in members if name.endswith(suffix)]
+            if len(matches) != 1 or archive.extractfile(members[matches[0]]).read() != asset.read_bytes():
+                errors.append(f"sdist asset missing or changed: {suffix}")
     required_wheel_suffixes = [
         "clash_verge_traffic_ledger/__init__.py",
         f"{normalized_name}-{version}.dist-info/METADATA",
