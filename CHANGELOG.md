@@ -4,6 +4,10 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
+## [Unreleased]
+
+- Refresh the product website with the timmyagentic visual style while preserving installation, download and documentation paths.
+
 ## [0.3.1] - 2026-10-20
 
 ### Added
