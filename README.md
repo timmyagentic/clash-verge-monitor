@@ -1,5 +1,7 @@
 # clash-verge-traffic-ledger
 
+[项目官网](https://traffic-ledger.timmyagentic.si) · [网站源码与部署](website/README.md)
+
 Local, Agent-native traffic auditor for Clash Verge Rev, with support for any Mihomo-compatible controller.
 
 The runtime records future traffic from the Mihomo controller, attributes bytes to a process where possible, stores the data in SQLite, and exposes deterministic health, audit, evidence, reporting, and retention commands. The bundled Skill turns those commands into a natural-language workflow without MCP or a separate model API.

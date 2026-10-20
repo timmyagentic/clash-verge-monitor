@@ -8,6 +8,8 @@ runtime.
 
 ### Added
 
+- Add the public product website with release-aware setup, local-data boundaries and deployment configuration.
+
 - Shared Agent query envelopes across CLI and HTTP, including runtime capabilities,
   query echo, dataset provenance, explicit zero/unknown data states and coverage warnings.
 - Skill exploration, explicit source selection and actionable legacy-runtime errors.
