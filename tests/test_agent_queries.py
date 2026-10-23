@@ -5,12 +5,12 @@ import json
 from pathlib import Path
 import tempfile
 from datetime import datetime, timezone
-from clash_verge_traffic_ledger.agent_api import query_response
+from clash_verge_monitor.agent_api import query_response
 from test_skill_scripts import seed_database
 import unittest
 
-from clash_verge_traffic_ledger.__main__ import main
-from clash_verge_traffic_ledger.store import LedgerStore
+from clash_verge_monitor.__main__ import main
+from clash_verge_monitor.store import LedgerStore
 from test_skill_scripts import AUDITOR, ROOT, run_json
 
 
@@ -119,15 +119,15 @@ class AgentQueriesTests(unittest.TestCase):
 
     def test_documented_contract_tracks_runtime_policy_and_enums(self):
         import re
-        from clash_verge_traffic_ledger.agent_api import capabilities
-        from clash_verge_traffic_ledger.audit import POLICY_VERSION
-        doc = (ROOT / '.agents/skills/clash-verge-traffic-auditor/references/output-contract.md').read_text()
+        from clash_verge_monitor.agent_api import capabilities
+        from clash_verge_monitor.audit import POLICY_VERSION
+        doc = (ROOT / '.agents/skills/clash-verge-monitor/references/output-contract.md').read_text()
         sample = json.loads(re.search(r'```json\n(.*?)\n```', doc, re.S).group(1))
         runtime = capabilities()
         self.assertEqual(sample['schema_version'], runtime['schema_version'])
         self.assertEqual(sample['runtime'], runtime['runtime'])
         self.assertEqual(int(re.search(r'Policy version (\d+)', doc).group(1)), POLICY_VERSION)
-        policy_doc = (ROOT / '.agents/skills/clash-verge-traffic-auditor/references/anomaly-policy.md').read_text()
+        policy_doc = (ROOT / '.agents/skills/clash-verge-monitor/references/anomaly-policy.md').read_text()
         self.assertEqual(int(re.search(r'policy version (\d+)', policy_doc).group(1)), POLICY_VERSION)
         for value in runtime['data']['data_states'] + runtime['data']['coverage_states']:
             self.assertIn('`' + value + '`', doc)

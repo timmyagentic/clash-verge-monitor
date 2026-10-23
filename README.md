@@ -1,6 +1,8 @@
-# clash-verge-traffic-ledger
+# Clash Verge Monitor
 
-[项目官网](https://traffic-ledger.timmyagentic.si) · [网站源码与部署](website/README.md)
+Formerly Clash Verge Traffic Ledger. See [rename and upgrade compatibility](docs/renaming.md).
+
+[项目官网](https://clash-verge-monitor.timmyagentic.si) · [网站源码与部署](website/README.md)
 
 Local, Agent-native traffic auditor for Clash Verge Rev, with support for any Mihomo-compatible controller.
 
@@ -19,26 +21,28 @@ within the `0.3.x` line. See [the reliability guide](docs/reliability.md).
 ## Agent queries
 
 The primary machine interface is the bundled
-[traffic-auditor Skill](.agents/skills/clash-verge-traffic-auditor/SKILL.md).
+[Clash Verge Monitor Skill](.agents/skills/clash-verge-monitor/SKILL.md).
 Start with `capabilities`, then `health`, and use `explore` for filtered/paginated
 facts or `audit` → `evidence` for deterministic investigations. All these commands
 emit JSON; byte fields, coverage, warnings, query and provenance travel together.
 
 ```bash
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py capabilities
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py explore --runtime-source . --database /path/to/ledger.sqlite --start 2026-08-22 --end 2026-08-22 --route proxy --limit 50
+python3 .agents/skills/clash-verge-monitor/scripts/monitor.py capabilities
+python3 .agents/skills/clash-verge-monitor/scripts/monitor.py explore --runtime-source . --database /path/to/ledger.sqlite --start 2026-08-22 --end 2026-08-22 --route proxy --limit 50
 ```
 
 Installed runtime selection is explicit in the result. New source does not imply
 an upgraded installation; `--runtime-source` opts into a checkout without changing
-the sampler. See the [machine contract](.agents/skills/clash-verge-traffic-auditor/references/output-contract.md)
+the sampler. See the [machine contract](.agents/skills/clash-verge-monitor/references/output-contract.md)
 for empty/missing data states, error codes, HTTP compatibility, and live-read limits.
 
 ## Release status
 
-The stable release is [`v0.3.1`](https://github.com/timmyagentic/clash-verge-traffic-ledger/releases/tag/v0.3.1).
+The stable release is [`v0.3.1`](https://github.com/timmyagentic/clash-verge-monitor/releases/tag/v0.3.1).
 GitHub Release provides the wheel, source archive and SHA-256 checksums.
-[CI](https://github.com/timmyagentic/clash-verge-traffic-ledger/actions/workflows/ci.yml)
+That published version retains its old package/module names; this checkout prepares
+0.3.2 under the new name. Source examples below target this checkout.
+[CI](https://github.com/timmyagentic/clash-verge-monitor/actions/workflows/ci.yml)
 checks four OS/Python combinations, repository policy, and distribution builds and
 fresh wheel installation. Main requires an up-to-date PR, all six checks and
 resolved discussions, with no bypass actors. See [CONTRIBUTING.md](CONTRIBUTING.md)
@@ -50,7 +54,7 @@ the same database without deleting or rebuilding its history.
 
 ## Why this project exists
 
-Clash Verge/Mihomo logs are useful for connection history, but they usually do not preserve exact historical per-connection byte deltas. `clash-verge-traffic-ledger` records those deltas while the core is running, so daily app-level usage can be reconstructed later.
+Clash Verge/Mihomo logs are useful for connection history, but they usually do not preserve exact historical per-connection byte deltas. `clash-verge-monitor` records those deltas while the core is running, so daily app-level usage can be reconstructed later.
 
 ## References
 
@@ -79,19 +83,19 @@ This repo intentionally keeps the first version small and local. It borrows prov
 ## Agent-first Skill
 
 The canonical Skill is
-`.agents/skills/clash-verge-traffic-auditor/`. From Codex, invoke it with requests
+`.agents/skills/clash-verge-monitor/`. From Codex, invoke it with requests
 such as "analyze the last week of Clash Verge traffic", "why is unknown traffic
 high?", or "install and start monitoring".
 
 The bundled bootstrap installs a versioned runtime under
-`~/Library/Application Support/clash-verge-traffic-ledger/`. It adopts an
+`~/Library/Application Support/clash-verge-monitor/`. It adopts an
 existing database by path and never moves it automatically.
 
 ```bash
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py status --pretty
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py install --source "$PWD" --dry-run --pretty
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py install --source "$PWD" --load --pretty
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py audit --since 7 --baseline 30 --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/bootstrap.py status --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/bootstrap.py install --source "$PWD" --dry-run --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/bootstrap.py install --source "$PWD" --load --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/monitor.py audit --since 7 --baseline 30 --pretty
 ```
 
 Installation is idempotent. `--load` is explicit because it replaces and
@@ -108,9 +112,9 @@ deploy from a clean tagged checkout after the release artifacts are verified.
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e .
-python -m clash_verge_traffic_ledger doctor
-python -m clash_verge_traffic_ledger run --interval 1
-python -m clash_verge_traffic_ledger today
+python -m clash_verge_monitor doctor
+python -m clash_verge_monitor run --interval 1
+python -m clash_verge_monitor today
 ```
 
 By default the database is created at `data/ledger.sqlite` under the current working directory.
@@ -118,20 +122,20 @@ By default the database is created at `data/ledger.sqlite` under the current wor
 ## Commands
 
 ```bash
-python -m clash_verge_traffic_ledger doctor
-python -m clash_verge_traffic_ledger run --interval 1 --database data/ledger.sqlite
-python -m clash_verge_traffic_ledger today --database data/ledger.sqlite
-python -m clash_verge_traffic_ledger export --date 2026-07-02 --format markdown --output report.md
-python -m clash_verge_traffic_ledger export --date 2026-07-02 --format csv --output report.csv
-python -m clash_verge_traffic_ledger status --database data/ledger.sqlite
-python -m clash_verge_traffic_ledger anomalies --database data/ledger.sqlite
-python -m clash_verge_traffic_ledger health --database data/ledger.sqlite --pretty
-python -m clash_verge_traffic_ledger audit --database data/ledger.sqlite --since 7 --baseline 30 --pretty
-python -m clash_verge_traffic_ledger evidence --database data/ledger.sqlite --case-id CASE_ID --pretty
-python -m clash_verge_traffic_ledger maintenance --database data/ledger.sqlite --before 2026-07-01 --dry-run --pretty
-python -m clash_verge_traffic_ledger web --database data/ledger.sqlite --port 8765
-python -m clash_verge_traffic_ledger prune --database data/ledger.sqlite --before 2026-07-01 --dry-run
-python -m clash_verge_traffic_ledger compact --database data/ledger.sqlite --before 2026-07-01 --dry-run
+python -m clash_verge_monitor doctor
+python -m clash_verge_monitor run --interval 1 --database data/ledger.sqlite
+python -m clash_verge_monitor today --database data/ledger.sqlite
+python -m clash_verge_monitor export --date 2026-07-02 --format markdown --output report.md
+python -m clash_verge_monitor export --date 2026-07-02 --format csv --output report.csv
+python -m clash_verge_monitor status --database data/ledger.sqlite
+python -m clash_verge_monitor anomalies --database data/ledger.sqlite
+python -m clash_verge_monitor health --database data/ledger.sqlite --pretty
+python -m clash_verge_monitor audit --database data/ledger.sqlite --since 7 --baseline 30 --pretty
+python -m clash_verge_monitor evidence --database data/ledger.sqlite --case-id CASE_ID --pretty
+python -m clash_verge_monitor maintenance --database data/ledger.sqlite --before 2026-07-01 --dry-run --pretty
+python -m clash_verge_monitor web --database data/ledger.sqlite --port 8765
+python -m clash_verge_monitor prune --database data/ledger.sqlite --before 2026-07-01 --dry-run
+python -m clash_verge_monitor compact --database data/ledger.sqlite --before 2026-07-01 --dry-run
 ```
 
 Every raw-retention command defaults to a preview. It mutates the ledger only
@@ -140,14 +144,14 @@ when the same reviewed cutoff is rerun with `--apply`.
 For HTTP controller mode:
 
 ```bash
-python -m clash_verge_traffic_ledger doctor --controller http://127.0.0.1:9090 --secret "$MIHOMO_SECRET"
+python -m clash_verge_monitor doctor --controller http://127.0.0.1:9090 --secret "$MIHOMO_SECRET"
 ```
 
 To install a login-time sampler on macOS:
 
 ```bash
-python -m clash_verge_traffic_ledger install-service --database data/ledger.sqlite --interval 1
-python -m clash_verge_traffic_ledger uninstall-service
+python -m clash_verge_monitor install-service --database data/ledger.sqlite --interval 1
+python -m clash_verge_monitor uninstall-service
 ```
 
 Use `--no-load` to write the LaunchAgent plist without starting it immediately.

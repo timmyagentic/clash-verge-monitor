@@ -1,9 +1,9 @@
 ---
-name: clash-verge-traffic-auditor
+name: clash-verge-monitor
 description: Audit and operate the local Clash Verge/Mihomo traffic ledger with deterministic evidence. Use when a user asks to install or start traffic monitoring, check sampler health, analyze recent or weekly abnormal traffic, identify high-traffic processes or hosts, investigate unknown process attribution, inspect an anomaly case, or safely plan data retention. Trigger for Chinese requests such as "分析最近一周异常流量", "谁用了最多代理流量", "unknown 为什么这么高", or "检查采样服务". This skill is macOS-first and does not use MCP or an embedded model.
 ---
 
-# Clash Verge Traffic Auditor
+# Clash Verge Monitor
 
 Use the bundled scripts as the operational interface. Keep accounting and anomaly decisions in the deterministic Python runtime; use the host Agent only to choose the workflow, request confirmation, and explain evidence.
 
@@ -13,11 +13,11 @@ Resolve paths relative to this loaded skill directory. Do not assume the current
 
 ```bash
 python3 scripts/bootstrap.py status --pretty
-python3 scripts/traffic_auditor.py capabilities --pretty
-python3 scripts/traffic_auditor.py health --pretty
+python3 scripts/monitor.py capabilities --pretty
+python3 scripts/monitor.py health --pretty
 ```
 
-Treat `bootstrap.py status` as installation truth and `traffic_auditor.py health` as runtime truth. A degraded sampler can still have an audit-ready historical database.
+Treat `bootstrap.py status` as installation truth and `monitor.py health` as runtime truth. A degraded sampler can still have an audit-ready historical database.
 
 `capabilities` reports the selected runtime version, supported commands, limits and
 coverage/data enums. The wrapper prefers the installed runtime even when invoked
@@ -42,7 +42,7 @@ python3 scripts/bootstrap.py install --source <repo> --database <existing-ledger
 python3 scripts/bootstrap.py install --source <repo> --database <existing-ledger.sqlite> --load --pretty
 ```
 
-Never move an existing database automatically. The stable runtime belongs under `~/Library/Application Support/clash-verge-traffic-ledger/`; LaunchAgents must not point into a mutable Skill cache or repository virtual environment.
+Bootstrap reuses existing legacy installation roots and service identities; if both roots exist, inspect them and select --app-root explicitly. Never move an existing database automatically. The stable runtime belongs under `~/Library/Application Support/clash-verge-monitor/`; LaunchAgents must not point into a mutable Skill cache or repository virtual environment.
 
 ## Audit Traffic
 
@@ -53,8 +53,8 @@ Never move an existing database automatically. The stable runtime belongs under 
 5. Answer in the user's language with verdict, concrete byte evidence, baseline comparison, uncertainty, and the next safe check.
 
 ```bash
-python3 scripts/traffic_auditor.py audit --since 7 --baseline 30 --pretty
-python3 scripts/traffic_auditor.py evidence --case-id <case_id> --pretty
+python3 scripts/monitor.py audit --since 7 --baseline 30 --pretty
+python3 scripts/monitor.py evidence --case-id <case_id> --pretty
 ```
 
 Use these interpretations:
@@ -71,8 +71,8 @@ Read [anomaly-policy.md](references/anomaly-policy.md) when explaining threshold
 Keep maintenance read-only until the user confirms a specific mutation. Show row counts and preserved rollups first. Prefer compaction when file-space recovery is required: it retains daily aggregates, deletes the selected raw evidence, and runs SQLite `VACUUM`.
 
 ```bash
-python3 scripts/traffic_auditor.py maintain --before <YYYY-MM-DD> --mode compact --dry-run --pretty
-python3 scripts/traffic_auditor.py maintain --before <YYYY-MM-DD> --mode compact --apply --pretty
+python3 scripts/monitor.py maintain --before <YYYY-MM-DD> --mode compact --dry-run --pretty
+python3 scripts/monitor.py maintain --before <YYYY-MM-DD> --mode compact --apply --pretty
 ```
 
 Run uninstall without `--apply` first. It preserves data and logs even when applied.
@@ -105,7 +105,7 @@ reinterpret v2 case IDs as v3 cases. Re-run audit to obtain the current ID.
 For filtered drill-down use the bundled wrapper:
 
 ```bash
-python3 scripts/traffic_auditor.py explore --start 2026-08-22 --end 2026-08-22 --by process --route proxy --limit 50 --offset 0 --pretty
+python3 scripts/monitor.py explore --start 2026-08-22 --end 2026-08-22 --by process --route proxy --limit 50 --offset 0 --pretty
 ```
 
 Group by process, host, route, hour, minute, connection, rule or chain. Filters

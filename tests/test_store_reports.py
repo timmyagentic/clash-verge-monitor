@@ -4,9 +4,9 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from clash_verge_traffic_ledger.models import TrafficDelta
-from clash_verge_traffic_ledger.reports import export_csv, export_markdown, format_report
-from clash_verge_traffic_ledger.store import LedgerStore
+from clash_verge_monitor.models import TrafficDelta
+from clash_verge_monitor.reports import export_csv, export_markdown, format_report
+from clash_verge_monitor.store import LedgerStore
 
 
 class StoreAndReportTests(unittest.TestCase):

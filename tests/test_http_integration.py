@@ -13,10 +13,10 @@ import time
 import unittest
 from unittest.mock import patch
 
-from clash_verge_traffic_ledger.client import ControllerConfig, MihomoClient
-from clash_verge_traffic_ledger.store import LedgerStore
-from clash_verge_traffic_ledger.web import serve_dashboard
-from clash_verge_traffic_ledger.agent_api import query_response
+from clash_verge_monitor.client import ControllerConfig, MihomoClient
+from clash_verge_monitor.store import LedgerStore
+from clash_verge_monitor.web import serve_dashboard
+from clash_verge_monitor.agent_api import query_response
 
 
 class UnixControllerTests(unittest.TestCase):
@@ -39,7 +39,7 @@ class UnixControllerTests(unittest.TestCase):
             worker.start()
             client = MihomoClient(ControllerConfig("auto", timeout=0.2))
             with patch(
-                "clash_verge_traffic_ledger.client.controller_candidates",
+                "clash_verge_monitor.client.controller_candidates",
                 return_value=paths,
             ):
                 self.assertEqual(client.version()["version"], "test")

@@ -1,8 +1,8 @@
 import unittest
 from datetime import datetime, timezone
 
-from clash_verge_traffic_ledger.models import ConnectionSnapshot
-from clash_verge_traffic_ledger.monitor import DeltaComputer, Sampler
+from clash_verge_monitor.models import ConnectionSnapshot
+from clash_verge_monitor.monitor import DeltaComputer, Sampler
 
 
 def snapshot(connection_id, upload, download, process="Cursor", host="api2.cursor.sh"):

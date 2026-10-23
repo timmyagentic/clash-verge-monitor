@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clash-verge-traffic-ledger"
-version = "0.3.1"
-description = "Clash Verge traffic ledger for Mihomo-compatible cores"
+name = "clash-verge-monitor"
+version = "0.3.2"
+description = "Clash Verge Monitor for Mihomo-compatible cores"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -16,15 +16,16 @@ authors = [
 dependencies = []
 
 [project.scripts]
-clash-verge-traffic-ledger = "clash_verge_traffic_ledger.__main__:main"
+clash-verge-traffic-ledger = "clash_verge_monitor.__main__:main"
+clash-verge-monitor = "clash_verge_monitor.__main__:main"
 
 [project.urls]
-Repository = "https://github.com/timmyagentic/clash-verge-traffic-ledger"
-Changelog = "https://github.com/timmyagentic/clash-verge-traffic-ledger/blob/main/CHANGELOG.md"
-Issues = "https://github.com/timmyagentic/clash-verge-traffic-ledger/issues"
+Repository = "https://github.com/timmyagentic/clash-verge-monitor"
+Changelog = "https://github.com/timmyagentic/clash-verge-monitor/blob/main/CHANGELOG.md"
+Issues = "https://github.com/timmyagentic/clash-verge-monitor/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-clash_verge_traffic_ledger = ["assets/*.js", "assets/*.css", "assets/*.md", "assets/icons/*.svg", "assets/icons/LICENSE"]
+clash_verge_monitor = ["assets/*.js", "assets/*.css", "assets/*.md", "assets/icons/*.svg", "assets/icons/LICENSE"]

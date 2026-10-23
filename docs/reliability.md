@@ -28,11 +28,11 @@
 ## 分析与导出
 
 ```sh
-python -m clash_verge_traffic_ledger explore --database data/ledger.sqlite \
+python -m clash_verge_monitor explore --database data/ledger.sqlite \
   --start 2026-08-22 --end 2026-08-22 --process codex --by minute --pretty
-python -m clash_verge_traffic_ledger explore --database data/ledger.sqlite \
+python -m clash_verge_monitor explore --database data/ledger.sqlite \
   --start 2026-08-22 --end 2026-08-22 --by route --pretty
-python -m clash_verge_traffic_ledger web --database data/ledger.sqlite --port 8765
+python -m clash_verge_monitor web --database data/ledger.sqlite --port 8765
 ```
 
 支持应用、域名、线路类型、小时、分钟、连接、规则、代理链。过滤参数为精确匹配；日期范围最多 367 天。应用/域名可点击进入分钟分布。网页每页 100 组，支持上一页/下一页及总量、上传、下载、时间排序，CSV 导出当前页；CLI 可指定 `--limit`（最大 1000）、`--offset` 和 `--sort`。响应包含 `total_groups` 和 `truncated`。
@@ -44,10 +44,10 @@ python -m clash_verge_traffic_ledger web --database data/ledger.sqlite --port 87
 ## 保留与备份恢复
 
 ```sh
-python -m clash_verge_traffic_ledger backup --database data/ledger.sqlite --output backups/ledger.sqlite
-python -m clash_verge_traffic_ledger restore --database backups/ledger.sqlite --output data/restored.sqlite
+python -m clash_verge_monitor backup --database data/ledger.sqlite --output backups/ledger.sqlite
+python -m clash_verge_monitor restore --database backups/ledger.sqlite --output data/restored.sqlite
 # 审阅后添加 --apply；只能恢复到不存在的新路径，永不替换活跃数据库。
-python -m clash_verge_traffic_ledger retention --database data/ledger.sqlite --config retention.toml
+python -m clash_verge_monitor retention --database data/ledger.sqlite --config retention.toml
 # 审阅计划后添加 --apply。没有自动定时删除。
 ```
 
@@ -70,7 +70,7 @@ compact = false
 新运行时目录包含版本和源码摘要，同一版本不同源码不会覆盖正在运行的目录。更新保存安装清单及两个 plist 的 checkpoint；只有旧数据库低于 schema v2 时才创建迁移前备份；`--load` 停止旧服务后检查 schema，再切换新版。同为 schema v2 的候选升级不会重建或清理历史。若迁移或加载失败，会返回失败；不得将此状态当成上线成功，使用 checkpoint 恢复或解决错误后重试。
 
 ```sh
-python .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py rollback \
+python .agents/skills/clash-verge-monitor/scripts/bootstrap.py rollback \
   --checkpoint '<app-root>/backups/checkpoint-....json'
 ```
 

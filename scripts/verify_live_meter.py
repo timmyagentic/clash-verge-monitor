@@ -14,10 +14,10 @@ from pathlib import Path
 import threading
 import time
 
-from clash_verge_traffic_ledger.client import ControllerConfig, MihomoClient
-from clash_verge_traffic_ledger.monitor import Sampler
-from clash_verge_traffic_ledger.store import LedgerStore
-from clash_verge_traffic_ledger.locking import writer_lock
+from clash_verge_monitor.client import ControllerConfig, MihomoClient
+from clash_verge_monitor.monitor import Sampler
+from clash_verge_monitor.store import LedgerStore
+from clash_verge_monitor.locking import writer_lock
 
 SIZE = 1024 * 1024
 CHUNK = b"x" * (64 * 1024)

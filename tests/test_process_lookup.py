@@ -1,7 +1,7 @@
 import subprocess
 import unittest
 
-from clash_verge_traffic_ledger.process_lookup import (
+from clash_verge_monitor.process_lookup import (
     capture_process_table,
     choose_process_name,
     parse_lsof_process_names,

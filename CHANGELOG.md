@@ -4,7 +4,13 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
-## [Unreleased]
+## [0.3.2] - Unreleased
+
+### Added
+
+- Rename the product, Python distribution/module, CLI, Agent Skill and dashboard to Clash Verge Monitor.
+- Keep the legacy CLI/module usable, reuse existing installation roots and service identities, and preserve the installed database path when upgrading.
+- Prepare the renamed website domain and permanent redirects from the previous website. Published v0.3.1 assets retain their original names.
 
 - Refresh the product website with the timmyagentic visual style while preserving installation, download and documentation paths.
 

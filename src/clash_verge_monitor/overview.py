@@ -125,8 +125,8 @@ def shell(date: str, view: str, main: str) -> str:
             ("history", "history", "历史记录", "clock", {}),
         ]
     )
-    return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Traffic Ledger · 流量概览</title><link rel="stylesheet" href="/assets/dashboard.css"><script src="/assets/chart.umd.js" defer></script><script src="/assets/dashboard.js" defer></script></head>
-    <body><a class="skip" href="#main">跳到主要内容</a><aside class="sidebar"><a class="brand" aria-label="Traffic Ledger" href="{link(date)}"><span class="brand-mark">{icon("wave-sine")}</span><span>Traffic Ledger<small>本机流量账本</small></span></a><nav aria-label="主导航">{nav}</nav><div class="sidebar-note">让连接更清晰<small>Quietly observe,<br>better internet.</small></div></aside><main id="main">{main}</main></body></html>'''
+    return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Clash Verge Monitor · 流量概览</title><link rel="stylesheet" href="/assets/dashboard.css"><script src="/assets/chart.umd.js" defer></script><script src="/assets/dashboard.js" defer></script></head>
+    <body><a class="skip" href="#main">跳到主要内容</a><aside class="sidebar"><a class="brand" aria-label="Clash Verge Monitor" href="{link(date)}"><span class="brand-mark">{icon("wave-sine")}</span><span>Clash Verge Monitor<small>本机流量账本</small></span></a><nav aria-label="主导航">{nav}</nav><div class="sidebar-note">让连接更清晰<small>Quietly observe,<br>better internet.</small></div></aside><main id="main">{main}</main></body></html>'''
 
 
 def render_overview(store, date: str, view: str = "overview", route: str = "") -> str:

@@ -6,13 +6,13 @@ from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 
-from clash_verge_traffic_ledger.__main__ import main
-from clash_verge_traffic_ledger.audit import audit_traffic, build_evidence, find_case
-from clash_verge_traffic_ledger.client import ControllerConfig
-from clash_verge_traffic_ledger.contracts import SCHEMA_VERSION, envelope, render_json
-from clash_verge_traffic_ledger.health import inspect_health
-from clash_verge_traffic_ledger.models import TrafficDelta
-from clash_verge_traffic_ledger.store import LedgerStore
+from clash_verge_monitor.__main__ import main
+from clash_verge_monitor.audit import audit_traffic, build_evidence, find_case
+from clash_verge_monitor.client import ControllerConfig
+from clash_verge_monitor.contracts import SCHEMA_VERSION, envelope, render_json
+from clash_verge_monitor.health import inspect_health
+from clash_verge_monitor.models import TrafficDelta
+from clash_verge_monitor.store import LedgerStore
 
 
 MIB = 1024 * 1024
