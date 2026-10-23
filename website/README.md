@@ -1,6 +1,6 @@
 # Clash Verge Monitor website
 
-Prepared canonical site (requires authorized deployment): https://clash-verge-monitor.timmyagentic.si
+Canonical product site: https://clash-verge-monitor.timmyagentic.si
 
 Buildless HTML, CSS and JavaScript. All assets are local; product illustrations use explicitly labeled sample data. The site never connects to a visitor's hardware, router or ledger.
 

@@ -38,10 +38,10 @@ for empty/missing data states, error codes, HTTP compatibility, and live-read li
 
 ## Release status
 
-The stable release is [`v0.3.1`](https://github.com/timmyagentic/clash-verge-monitor/releases/tag/v0.3.1).
+The stable release is [`v0.3.2`](https://github.com/timmyagentic/clash-verge-monitor/releases/tag/v0.3.2).
 GitHub Release provides the wheel, source archive and SHA-256 checksums.
-That published version retains its old package/module names; this checkout prepares
-0.3.2 under the new name. Source examples below target this checkout.
+Version 0.3.2 uses the new package/module names. Existing installations retain
+their historical database and service identity.
 [CI](https://github.com/timmyagentic/clash-verge-monitor/actions/workflows/ci.yml)
 checks four OS/Python combinations, repository policy, and distribution builds and
 fresh wheel installation. Main requires an up-to-date PR, all six checks and

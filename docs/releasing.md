@@ -31,21 +31,21 @@ python3 scripts/verify_distribution.py --dist-dir dist
 
 ## 正式发布
 
-只从干净、与远端 main 对齐且合并后 CI 通过的工作树发 tag。发布 tag 必须显式得到用户授权。以 `0.3.1` 为例：
+只从干净、与远端 main 对齐且合并后 CI 通过的工作树发 tag。发布 tag 必须显式得到用户授权。以 `0.3.2` 为例：
 
 ```sh
 git fetch origin main --tags
-python3 scripts/check_repository_policy.py --tag v0.3.1
-git tag -a v0.3.1 -m 'Release v0.3.1'
-git push origin v0.3.1
+python3 scripts/check_repository_policy.py --tag v0.3.2
+git tag -a v0.3.2 -m 'Release v0.3.2'
+git push origin v0.3.2
 ```
 
 Tag 推送触发 Release 工作流，重复完整 CI，要求 tag commit 等于当前 main；随后构建、Twine 校验、包内容与版本检查、隔离 wheel 安装烟测，再生成校验和并创建 Release。只有 publish job 拥有 `contents: write`。已存在的 Release 创建失败，不覆盖或删除资产。不要并行手动创建同名 Release。
 
 ```sh
 gh run list --repo timmyagentic/clash-verge-monitor --workflow release.yml --limit 5
-gh release view v0.3.1 --repo timmyagentic/clash-verge-monitor
-gh release download v0.3.1 --repo timmyagentic/clash-verge-monitor --dir /absolute/new/download-directory
+gh release view v0.3.2 --repo timmyagentic/clash-verge-monitor
+gh release download v0.3.2 --repo timmyagentic/clash-verge-monitor --dir /absolute/new/download-directory
 ```
 
 在下载目录执行 `shasum -a 256 -c SHA256SUMS`；用下载的 wheel 再执行隔离安装烟测。核对 tag、main commit、Release 资产版本、下载哈希与工作流结论后，才称为正式发布。官网更新在 Release 可下载后部署，并读回版本链接。

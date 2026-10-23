@@ -1,7 +1,7 @@
 # Clash Verge Monitor rename
 
 The product is now **Clash Verge Monitor**, formerly Clash Verge Traffic Ledger.
-The renamed source prepares **0.3.2**; it is not a published release yet.
+The renamed product starts with **0.3.2**.
 
 | Surface | Current identity |
 | --- | --- |
@@ -11,7 +11,7 @@ The renamed source prepares **0.3.2**; it is not a published release yet.
 | Agent wrapper | `scripts/monitor.py` inside the Skill |
 | New installation root | `~/Library/Application Support/clash-verge-monitor/` |
 | New sampler / web services | `com.timmy.clash-verge-monitor` / `.web` |
-| Prepared website domain | `https://clash-verge-monitor.timmyagentic.si` |
+| Website domain | `https://clash-verge-monitor.timmyagentic.si` |
 
 ## Existing installations
 
@@ -35,8 +35,8 @@ The renamed source prepares **0.3.2**; it is not a published release yet.
 
 The v0.3.1 release is immutable. Its wheel is still named
 `clash_verge_traffic_ledger-0.3.1-py3-none-any.whl`, and that wheel uses the old module.
-Website stable-install commands deliberately match that release. New build artifacts
-use `clash_verge_monitor`. Publishing 0.3.2 is a separate release action.
+Website stable-install commands target v0.3.2 and use `clash_verge_monitor`.
+The old v0.3.1 download remains available for historical and rollback use.
 
 Dated design plans, verification runs and screenshots retain the name visible when
 captured. They are historical evidence, not screenshots of the renamed build.
