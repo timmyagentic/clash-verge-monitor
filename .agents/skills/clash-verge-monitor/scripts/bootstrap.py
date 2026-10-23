@@ -268,8 +268,8 @@ def install_runtime(source: Path, runtime_root: Path, bootstrap_python: Path) ->
 def load_service(label: str, plist: Path) -> None:
     domain = f"gui/{os.getuid()}"
     subprocess.run(["launchctl", "bootout", domain, str(plist)], check=False)
-    subprocess.run(["launchctl", "bootstrap", domain, str(plist)], check=True)
     subprocess.run(["launchctl", "enable", f"{domain}/{label}"], check=True)
+    subprocess.run(["launchctl", "bootstrap", domain, str(plist)], check=True)
     subprocess.run(["launchctl", "kickstart", "-k", f"{domain}/{label}"], check=True)
 
 

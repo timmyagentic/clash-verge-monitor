@@ -80,8 +80,8 @@ def bootstrap_service(
     runner: Runner = subprocess.run,
 ) -> None:
     domain = f"gui/{os.getuid()}"
-    runner(["launchctl", "bootstrap", domain, str(plist_path)], check=False)
     runner(["launchctl", "enable", f"{domain}/{label}"], check=True)
+    runner(["launchctl", "bootstrap", domain, str(plist_path)], check=False)
     runner(["launchctl", "kickstart", "-k", f"{domain}/{label}"], check=True)
 
 
