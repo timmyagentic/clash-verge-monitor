@@ -3,9 +3,9 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import replace
-from clash_verge_traffic_ledger.store import LedgerStore
-from clash_verge_traffic_ledger.monitor import DeltaComputer
-from clash_verge_traffic_ledger.overview import (
+from clash_verge_monitor.store import LedgerStore
+from clash_verge_monitor.monitor import DeltaComputer
+from clash_verge_monitor.overview import (
     overview_data,
     render_overview,
     render_details,

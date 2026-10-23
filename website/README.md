@@ -1,6 +1,6 @@
-# Clash Verge Traffic Ledger website
+# Clash Verge Monitor website
 
-Public product site: https://traffic-ledger.timmyagentic.si
+Prepared canonical site (requires authorized deployment): https://clash-verge-monitor.timmyagentic.si
 
 Buildless HTML, CSS and JavaScript. All assets are local; product illustrations use explicitly labeled sample data. The site never connects to a visitor's hardware, router or ledger.
 
@@ -9,6 +9,7 @@ Buildless HTML, CSS and JavaScript. All assets are local; product illustrations 
 ```sh
 python3 -m http.server 8787 --directory website/public
 node --check website/public/site.js
+node --test website/worker.test.mjs
 git diff --check
 wrangler deploy --config website/wrangler.jsonc --dry-run
 ```
@@ -23,7 +24,7 @@ After the repository review and merge gates, run from the verified commit:
 wrangler deploy --config website/wrangler.jsonc
 ```
 
-This config deploys only the website and its exact custom domain. It does not build, publish or install the application. Read back the active deployment and independently verify HTTPS, CSS/JS, robots, sitemap, 404 and primary links.
+This config deploys only the website and its two exact custom domains. It does not build, publish or install the application. Read back the active deployment and independently verify HTTPS, CSS/JS, robots, sitemap, 404 and primary links.
 
 
 ## timmyagentic visual system
@@ -32,4 +33,6 @@ The product website follows the approved timmyagentic main-site visual language:
 
 The self-hosted visual assets live under `brand/` in the static directory. Font licenses are included in `brand/fonts/`; Chinese subsets cover the current HTML/JavaScript copy (800 characters). Regenerate those subsets when adding new characters; system fallbacks remain configured. The ambient image is the same approved asset used on the main site. No third-party font request is made by visitors.
 
-See `docs/website-design-qa.md` and `docs/website-brand-preview.jpg` for the validated design.
+Current rename previews: [desktop](../docs/rename-website-preview.png) and [390px mobile](../docs/rename-website-mobile.png). Earlier design evidence remains in `docs/website-design-qa.md` and `docs/website-brand-preview.jpg`.
+
+The legacy domain redirects with HTTP 308 to the new domain, preserving paths and query strings. Deploy and verify both domains together. The Worker resource name is retained as an infrastructure identity; see [rename compatibility](../docs/renaming.md).

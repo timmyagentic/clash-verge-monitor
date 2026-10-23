@@ -3,11 +3,11 @@
 ## Project Structure & Module Organization
 
 This is a Python 3.11 package using a `src/` layout. Runtime code lives in
-`src/clash_verge_traffic_ledger/`; `__main__.py` defines the CLI commands,
+`src/clash_verge_monitor/`; `__main__.py` defines the CLI commands,
 `client.py` talks to the Mihomo controller, `monitor.py` computes sampled byte
 deltas, `store.py` persists SQLite rollups, and `audit.py` produces deterministic
 multi-day cases. The project-local Agent Skill lives at
-`.agents/skills/clash-verge-traffic-auditor/`; keep its scripts as thin runtime
+`.agents/skills/clash-verge-monitor/`; keep its scripts as thin runtime
 orchestration, not duplicate accounting logic.
 Tests live in `tests/` and mirror main behaviors. Context and verification notes
 live under `docs/`; local databases belong in ignored `data/` paths.
@@ -23,10 +23,10 @@ python -m pip install -e .
 Sets up an editable local install. Use the module form during development:
 
 ```bash
-python -m clash_verge_traffic_ledger doctor
-python -m clash_verge_traffic_ledger run --interval 1 --database data/ledger.sqlite
-python -m clash_verge_traffic_ledger today --database data/ledger.sqlite
-python -m clash_verge_traffic_ledger audit --database data/ledger.sqlite --since 7 --pretty
+python -m clash_verge_monitor doctor
+python -m clash_verge_monitor run --interval 1 --database data/ledger.sqlite
+python -m clash_verge_monitor today --database data/ledger.sqlite
+python -m clash_verge_monitor audit --database data/ledger.sqlite --since 7 --pretty
 ```
 
 Run the test suite with:
@@ -34,7 +34,7 @@ Run the test suite with:
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 "$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py" \
-  .agents/skills/clash-verge-traffic-auditor
+  .agents/skills/clash-verge-monitor
 ```
 
 ## Coding Style & Naming Conventions
@@ -56,7 +56,7 @@ baseline, case-ID, read-only, or retention behavior.
 ## Commit & Pull Request Guidelines
 
 Recent history uses short imperative commit subjects, for example `Add project
-brief and MVP status` and `Rename project for Clash Verge traffic ledger`.
+brief and MVP status` and `Rename project for Clash Verge Monitor`.
 Follow that style and keep each commit focused. Pull requests should describe
 the change, list checks run, note live controller or SQLite verification, and
 include sample output for CLI changes.

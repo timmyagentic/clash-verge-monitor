@@ -1,7 +1,7 @@
 import unittest
 
-from clash_verge_traffic_ledger.client import MihomoClient
-from clash_verge_traffic_ledger.models import ConnectionSnapshot
+from clash_verge_monitor.client import MihomoClient
+from clash_verge_monitor.models import ConnectionSnapshot
 
 
 class ConnectionSnapshotTests(unittest.TestCase):

@@ -1,3 +1,2 @@
-"""Clash Verge traffic ledger for Mihomo-compatible cores."""
-
-__version__ = "0.3.1"
+"""Compatibility namespace for installations predating Clash Verge Monitor."""
+from clash_verge_monitor import __version__, __path__

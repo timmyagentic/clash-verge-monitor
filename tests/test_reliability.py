@@ -4,9 +4,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from clash_verge_traffic_ledger.client import ControllerConfig, MihomoClient
-from clash_verge_traffic_ledger.monitor import Sampler
-from clash_verge_traffic_ledger.store import LedgerStore
+from clash_verge_monitor.client import ControllerConfig, MihomoClient
+from clash_verge_monitor.monitor import Sampler
+from clash_verge_monitor.store import LedgerStore
 from test_monitor import snapshot
 
 
@@ -75,7 +75,7 @@ class ReliabilityTests(unittest.TestCase):
     def test_automatic_discovery_retries_next_candidate(self):
         client = MihomoClient(ControllerConfig("auto"))
         with patch(
-            "clash_verge_traffic_ledger.client.controller_candidates",
+            "clash_verge_monitor.client.controller_candidates",
             return_value=["/old.sock", "/new.sock"],
         ):
 
@@ -89,7 +89,7 @@ class ReliabilityTests(unittest.TestCase):
                 self.assertEqual(client.resolved_controller, "/new.sock")
 
     def test_second_writer_is_rejected(self):
-        from clash_verge_traffic_ledger.locking import writer_lock
+        from clash_verge_monitor.locking import writer_lock
 
         with writer_lock(self.store.path):
             with self.assertRaises(RuntimeError):
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
 class MaintenanceTests(unittest.TestCase):
     def test_backup_restore_and_non_overwrite(self):
-        from clash_verge_traffic_ledger.maintenance import (
+        from clash_verge_monitor.maintenance import (
             backup_database,
             restore_database,
         )
@@ -128,8 +128,8 @@ class MaintenanceTests(unittest.TestCase):
                 backup_database(store.path, root / "backup.sqlite")
 
     def test_raw_retention_preserves_hourly_and_daily(self):
-        from clash_verge_traffic_ledger.monitor import DeltaComputer
-        from clash_verge_traffic_ledger.explore import explore
+        from clash_verge_monitor.monitor import DeltaComputer
+        from clash_verge_monitor.explore import explore
 
         with tempfile.TemporaryDirectory() as tmp:
             store = LedgerStore(Path(tmp) / "ledger.sqlite")

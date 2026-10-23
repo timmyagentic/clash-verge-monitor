@@ -1,4 +1,4 @@
-# clash-verge-traffic-ledger 项目立项与 MVP 状态
+# clash-verge-monitor 项目立项与 MVP 状态
 
 日期：2026-07-02
 
@@ -6,7 +6,7 @@
 
 ## 一句话说明
 
-`clash-verge-traffic-ledger` 是一个面向 Clash Verge Rev 的本机流量账本工具。它通过 Mihomo controller 的 `/connections` 接口持续采样，把未来发生的连接流量按进程和主机写入 SQLite，从而回答“今天哪些应用用了多少代理流量”。
+`clash-verge-monitor` 是一个面向 Clash Verge Rev 的本机流量账本工具。它通过 Mihomo controller 的 `/connections` 接口持续采样，把未来发生的连接流量按进程和主机写入 SQLite，从而回答“今天哪些应用用了多少代理流量”。
 
 ## 立项背景
 
@@ -49,7 +49,7 @@
 
 最终选择自己做一个很小的 MVP，原因是这个项目的核心需求不是“再做一个 dashboard”，而是把本机 Clash Verge 的未来代理流量变成可追溯的日账本。
 
-## 名字为什么叫 clash-verge-traffic-ledger
+## 名字为什么叫 clash-verge-monitor
 
 底层协议依赖 Mihomo-compatible controller，所以它也可以连接普通 HTTP controller，例如 `http://127.0.0.1:9090`。
 
@@ -61,14 +61,14 @@
 
 所以项目名把 `clash-verge` 放在前面，避免看起来像一个泛泛的 Mihomo 工具。
 
-`ledger` 表示账本：它不是只显示当前速度，而是把每次采样的增量写入数据库，便于之后按天、按进程、按主机查询。
+`Monitor` 表示持续监控：既观察当前采样状态，也保存流量增量，便于之后按天、按进程、按主机查询。产品原名及旧安装兼容策略见 [更名说明](renaming.md)。
 
 ## 当前版本与交付状态
 
 截至 2026-08-15：
 
 - 当前源码与正式发布线已升级为 `0.3.0`；不可变交付入口是 GitHub
-  [`v0.3.0` Release](https://github.com/timmyagentic/clash-verge-traffic-ledger/releases/tag/v0.3.0)。
+  [`v0.3.0` Release](https://github.com/timmyagentic/clash-verge-monitor/releases/tag/v0.3.0)。
 - `0.3.0` 包含策略 v2、TUN/UDP 归因、health/audit/evidence 加固、默认只读
   的 raw retention，以及可实际回收文件空间的 compaction。
 - 仓库版本、本机安装版本与运行状态仍是三种独立事实；只有本机清单同时显示
@@ -83,13 +83,13 @@
 GitHub 仓库：
 
 ```text
-https://github.com/timmyagentic/clash-verge-traffic-ledger
+https://github.com/timmyagentic/clash-verge-monitor
 ```
 
 本地路径：
 
 ```text
-/Users/timmy/Projects/clash-verge-traffic-ledger
+/path/to/clash-verge-monitor
 ```
 
 已完成能力：
@@ -142,14 +142,14 @@ https://github.com/timmyagentic/clash-verge-traffic-ledger
 开发模式运行：
 
 ```bash
-cd /Users/timmy/Projects/clash-verge-traffic-ledger
-PYTHONPATH=src python3 -m clash_verge_traffic_ledger doctor
-PYTHONPATH=src python3 -m clash_verge_traffic_ledger run --interval 1
-PYTHONPATH=src python3 -m clash_verge_traffic_ledger today
-PYTHONPATH=src python3 -m clash_verge_traffic_ledger status
-PYTHONPATH=src python3 -m clash_verge_traffic_ledger anomalies
-PYTHONPATH=src python3 -m clash_verge_traffic_ledger web --port 8765
-PYTHONPATH=src python3 -m clash_verge_traffic_ledger compact --before 2026-07-01 --dry-run
+cd /path/to/clash-verge-monitor
+PYTHONPATH=src python3 -m clash_verge_monitor doctor
+PYTHONPATH=src python3 -m clash_verge_monitor run --interval 1
+PYTHONPATH=src python3 -m clash_verge_monitor today
+PYTHONPATH=src python3 -m clash_verge_monitor status
+PYTHONPATH=src python3 -m clash_verge_monitor anomalies
+PYTHONPATH=src python3 -m clash_verge_monitor web --port 8765
+PYTHONPATH=src python3 -m clash_verge_monitor compact --before 2026-07-01 --dry-run
 ```
 
 安装后运行：
@@ -158,12 +158,12 @@ PYTHONPATH=src python3 -m clash_verge_traffic_ledger compact --before 2026-07-01
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e .
-clash-verge-traffic-ledger doctor
-clash-verge-traffic-ledger run --interval 1
-clash-verge-traffic-ledger today
-clash-verge-traffic-ledger status
-clash-verge-traffic-ledger anomalies
-clash-verge-traffic-ledger web --port 8765
+clash-verge-monitor doctor
+clash-verge-monitor run --interval 1
+clash-verge-monitor today
+clash-verge-monitor status
+clash-verge-monitor anomalies
+clash-verge-monitor web --port 8765
 ```
 
 默认数据库位置是当前工作目录下：

@@ -24,7 +24,7 @@ def main() -> int:
     errors = distribution_errors(dist, version)
     if errors:
         raise SystemExit("\n".join(errors))
-    wheel = dist / f"clash_verge_traffic_ledger-{version}-py3-none-any.whl"
+    wheel = dist / f"clash_verge_monitor-{version}-py3-none-any.whl"
     environment = os.environ.copy()
     for name in ("PYTHONPATH", "PYTHONHOME"):
         environment.pop(name, None)
@@ -34,15 +34,26 @@ def main() -> int:
         python = root / "venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         subprocess.run([str(python), "-m", "pip", "install", "--no-deps", str(wheel)],
                        cwd=root, env=environment, check=True)
-        output = subprocess.check_output([str(python), "-I", "-m", "clash_verge_traffic_ledger",
+        output = subprocess.check_output([str(python), "-I", "-m", "clash_verge_monitor",
                                           "capabilities"], cwd=root, env=environment, text=True)
         result = json.loads(output)
         if not result["ok"] or result["runtime"]["version"] != version:
             raise SystemExit("installed wheel capabilities/version mismatch")
-        subprocess.run([str(python), "-I", "-m", "clash_verge_traffic_ledger", "--help"],
+        subprocess.run([str(python), "-I", "-m", "clash_verge_monitor", "--help"],
                        cwd=root, env=environment, check=True, stdout=subprocess.DEVNULL)
+        for command in ("clash-verge-monitor", "clash-verge-traffic-ledger"):
+            executable = python.parent / (command + (".exe" if os.name == "nt" else ""))
+            installed = json.loads(subprocess.check_output(
+                [str(executable), "capabilities"], cwd=root, env=environment, text=True))
+            if installed["runtime"] != result["runtime"]:
+                raise SystemExit("console entry point identity mismatch")
+        legacy = json.loads(subprocess.check_output(
+            [str(python), "-I", "-m", "clash_verge_traffic_ledger", "capabilities"],
+            cwd=root, env=environment, text=True))
+        if legacy["runtime"] != result["runtime"]:
+            raise SystemExit("legacy module identity mismatch")
     if args.write_checksums:
-        artifacts = [wheel, dist / f"clash_verge_traffic_ledger-{version}.tar.gz"]
+        artifacts = [wheel, dist / f"clash_verge_monitor-{version}.tar.gz"]
         (dist / "SHA256SUMS").write_text("".join(
             f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in artifacts))
     print(f"Distribution install smoke OK: {version}")

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Clash Verge Traffic Auditor"
-  short_description: "Audit Clash Verge traffic with local evidence"
-  default_prompt: "Use $clash-verge-traffic-auditor to analyze the last seven days of Clash Verge traffic for anomalies."

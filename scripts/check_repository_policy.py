@@ -40,10 +40,10 @@ def source_policy_errors(root: Path) -> list[str]:
     import yaml
 
     errors = []
-    skill = root / ".agents/skills/clash-verge-traffic-auditor/SKILL.md"
+    skill = root / ".agents/skills/clash-verge-monitor/SKILL.md"
     parts = skill.read_text().split("---", 2)
     metadata = yaml.safe_load(parts[1]) if len(parts) == 3 else {}
-    if metadata.get("name") != "clash-verge-traffic-auditor" or not metadata.get("description"):
+    if metadata.get("name") != "clash-verge-monitor" or not metadata.get("description"):
         errors.append("Skill name and description are required")
     for path in (root / ".github/workflows").glob("*.yml"):
         workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)

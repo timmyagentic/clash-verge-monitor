@@ -111,7 +111,7 @@ def render_dashboard(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Clash Verge Traffic Ledger</title>
+  <title>Clash Verge Monitor</title>
   <style>
     :root {{
       color-scheme: light;
@@ -246,7 +246,7 @@ def render_dashboard(
 <body>
   <main>
     <header>
-      <h1>Clash Verge Traffic Ledger</h1>
+      <h1>Clash Verge Monitor</h1>
       <div class="date">{escape(date)}</div>
     </header>
     {detail}

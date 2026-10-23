@@ -20,22 +20,22 @@ from pathlib import Path
 from typing import Any
 
 from lib.output import action, emit, error, payload
-from lib.paths import default_app_root, default_launch_agents_dir, discover_source, load_manifest
+from lib.paths import default_app_root, default_launch_agents_dir, discover_source, load_manifest, service_labels
 
 
-SAMPLER_LABEL = "com.timmy.clash-verge-traffic-ledger"
+SAMPLER_LABEL = "com.timmy.clash-verge-monitor"
 WEB_LABEL = f"{SAMPLER_LABEL}.web"
 DEFAULT_CONTROLLER = "auto"
 
 
 def add_path_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--app-root", default=str(default_app_root()))
+    parser.add_argument("--app-root", default=None)
     parser.add_argument("--launch-agents-dir", default=str(default_launch_agents_dir()))
     parser.add_argument("--pretty", action="store_true")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Install the traffic ledger into a stable local runtime")
+    parser = argparse.ArgumentParser(description="Install Clash Verge Monitor into a stable local runtime")
     commands = parser.add_subparsers(dest="command", required=True)
 
     status = commands.add_parser("status", help="Inspect installation state without writing")
@@ -107,7 +107,7 @@ def validate_source(source: Path | None) -> Path:
         raise FileNotFoundError(
             "repository source not found; pass --source or run from the project-local skill"
         )
-    package = source / "src" / "clash_verge_traffic_ledger"
+    package = source / "src" / "clash_verge_monitor"
     if not package.is_dir() or not (source / "pyproject.toml").is_file():
         raise FileNotFoundError(f"invalid repository source: {source}")
     return source
@@ -206,7 +206,7 @@ def launchd_payload(
 def install_runtime(source: Path, runtime_root: Path, bootstrap_python: Path) -> Path:
     venv_root = runtime_root / "venv"
     runtime_python = venv_root / "bin" / "python"
-    if runtime_python.is_file() and (runtime_root / "src" / "clash_verge_traffic_ledger" / "__init__.py").is_file():
+    if runtime_python.is_file() and (runtime_root / "src" / "clash_verge_monitor" / "__init__.py").is_file():
         return runtime_python
     if not runtime_python.is_file():
         if venv_root.exists():
@@ -216,10 +216,10 @@ def install_runtime(source: Path, runtime_root: Path, bootstrap_python: Path) ->
 
     source_root = runtime_root / "src"
     source_root.mkdir(parents=True, exist_ok=True)
-    package_target = source_root / "clash_verge_traffic_ledger"
+    package_target = source_root / "clash_verge_monitor"
     staged = source_root / f".package-{uuid.uuid4().hex}"
     shutil.copytree(
-        source / "src" / "clash_verge_traffic_ledger",
+        source / "src" / "clash_verge_monitor",
         staged,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
@@ -229,6 +229,12 @@ def install_runtime(source: Path, runtime_root: Path, bootstrap_python: Path) ->
     staged.rename(package_target)
     if previous.exists():
         shutil.rmtree(previous)
+
+    # Keep old copied Skills functional against this installed runtime.
+    compatibility = source / "src" / "clash_verge_traffic_ledger"
+    if compatibility.is_dir():
+        shutil.copytree(compatibility, source_root / compatibility.name, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
     clean_environment = os.environ.copy()
     clean_environment.pop("PYTHONPATH", None)
@@ -242,14 +248,14 @@ def install_runtime(source: Path, runtime_root: Path, bootstrap_python: Path) ->
     )
     site_packages = Path(completed.stdout.strip())
     atomic_write(
-        site_packages / "clash_verge_traffic_ledger.pth",
+        site_packages / "clash_verge_monitor.pth",
         f"{source_root}\n".encode("utf-8"),
     )
     subprocess.run(
         [
             str(runtime_python),
             "-c",
-            "import clash_verge_traffic_ledger as p; print(p.__version__)",
+            "import clash_verge_monitor as p; print(p.__version__)",
         ],
         capture_output=True,
         text=True,
@@ -274,6 +280,7 @@ def unload_service(label: str, plist: Path) -> None:
 
 
 def installation_status(app_root: Path, launch_agents_dir: Path) -> dict[str, Any]:
+    SAMPLER_LABEL, WEB_LABEL = service_labels(app_root, launch_agents_dir)
     manifest = load_manifest(app_root)
     runtime_python = (
         Path(os.path.abspath(os.path.expanduser(str(manifest["runtime_python"]))))
@@ -326,7 +333,7 @@ def command_status(args: argparse.Namespace) -> int:
 
 def runtime_digest(source: Path) -> str:
     digest = hashlib.sha256()
-    package = source / 'src' / 'clash_verge_traffic_ledger'
+    package = source / 'src' / 'clash_verge_monitor'
     for path in sorted(package.rglob('*')):
         if not path.is_file() or '__pycache__' in path.parts or path.suffix == '.pyc':
             continue
@@ -336,6 +343,7 @@ def runtime_digest(source: Path) -> str:
 
 
 def save_checkpoint(app_root: Path, launch_agents_dir: Path) -> Path | None:
+    SAMPLER_LABEL, WEB_LABEL = service_labels(app_root, launch_agents_dir)
     previous = load_manifest(app_root)
     if not previous:
         return None
@@ -370,6 +378,7 @@ def command_rollback(args: argparse.Namespace) -> int:
             if c.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                 raise ValueError('Rollback database failed integrity check')
         plists = {}
+        SAMPLER_LABEL, WEB_LABEL = service_labels(app_root, absolute(args.launch_agents_dir))
         for label in (SAMPLER_LABEL,WEB_LABEL):
             content = saved['plists'][label]
             if content.get('Label') != label or content['ProgramArguments'][0] != str(runtime):
@@ -407,11 +416,14 @@ def command_install(args: argparse.Namespace) -> int:
         secret_file = validate_secret_file(args.secret_file)
         app_root = absolute(args.app_root)
         launch_agents_dir = absolute(args.launch_agents_dir)
+        SAMPLER_LABEL, WEB_LABEL = service_labels(app_root, launch_agents_dir)
         version = read_version(source)
         runtime_root = app_root / "runtime" / f"{version}-{runtime_digest(source)}"
         runtime_python = runtime_root / "venv" / "bin" / "python"
         if args.database:
             database = absolute(args.database)
+        elif (load_manifest(app_root) or {}).get("database"):
+            database = absolute(load_manifest(app_root)["database"])
         elif (source / "data" / "ledger.sqlite").is_file():
             database = (source / "data" / "ledger.sqlite").resolve()
         else:
@@ -447,20 +459,20 @@ def command_install(args: argparse.Namespace) -> int:
             needs_backup = False
         if needs_backup:
             database_backup = app_root / 'backups' / f'ledger-{uuid.uuid4().hex}.sqlite'
-            subprocess.run([str(runtime_python),'-m','clash_verge_traffic_ledger','backup',
+            subprocess.run([str(runtime_python),'-m','clash_verge_monitor','backup',
                 '--database',str(database),'--output',str(database_backup)],check=True,capture_output=True)
         if args.load:
             # The old 0.3 runtime predates cooperative locks. Stop it before migration.
             for label,path in ((SAMPLER_LABEL,sampler_plist),(WEB_LABEL,web_plist)):
                 if path.is_file():
                     unload_service(label,path)
-            subprocess.run([str(runtime_python),'-m','clash_verge_traffic_ledger','migrate',
+            subprocess.run([str(runtime_python),'-m','clash_verge_monitor','migrate',
                 '--database',str(database),'--apply'],check=True,capture_output=True)
 
         sampler_arguments = [
             str(runtime_python),
             "-m",
-            "clash_verge_traffic_ledger",
+            "clash_verge_monitor",
             "run",
             "--interval",
             f"{args.interval:g}",
@@ -476,7 +488,7 @@ def command_install(args: argparse.Namespace) -> int:
         web_arguments = [
             str(runtime_python),
             "-m",
-            "clash_verge_traffic_ledger",
+            "clash_verge_monitor",
             "web",
             "--database",
             str(database),
@@ -508,6 +520,7 @@ def command_install(args: argparse.Namespace) -> int:
         previous_manifest = load_manifest(app_root) or {}
         manifest = {
             "schema_version": "1",
+            "runtime_module": "clash_verge_monitor",
             "database_schema_max": 2,
             "rollback_checkpoint": str(checkpoint) if checkpoint else None,
             "pre_upgrade_database_backup": str(database_backup) if database_backup else None,
@@ -574,6 +587,7 @@ def command_uninstall(args: argparse.Namespace) -> int:
     try:
         app_root = absolute(args.app_root)
         launch_agents_dir = absolute(args.launch_agents_dir)
+        SAMPLER_LABEL, WEB_LABEL = service_labels(app_root, launch_agents_dir)
         runtime_dir = app_root / "runtime"
         sampler_plist = launch_agents_dir / f"{SAMPLER_LABEL}.plist"
         web_plist = launch_agents_dir / f"{WEB_LABEL}.plist"
@@ -644,6 +658,8 @@ def command_uninstall(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.app_root is None:
+        args.app_root = str(default_app_root())
     if args.command == "status":
         return command_status(args)
     if args.command == "rollback":

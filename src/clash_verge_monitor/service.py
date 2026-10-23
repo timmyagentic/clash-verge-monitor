@@ -7,7 +7,18 @@ from pathlib import Path
 from typing import Callable
 
 
-DEFAULT_LABEL = "com.timmy.clash-verge-traffic-ledger"
+DEFAULT_LABEL = "com.timmy.clash-verge-monitor"
+LEGACY_LABEL = "com.timmy.clash-verge-traffic-ledger"
+
+
+def installed_service_label() -> str:
+    agents = Path.home() / "Library" / "LaunchAgents"
+    current = agents / f"{DEFAULT_LABEL}.plist"
+    legacy = agents / f"{LEGACY_LABEL}.plist"
+    if current.exists() and legacy.exists():
+        raise ValueError("Both service identities exist; select a service explicitly")
+    return LEGACY_LABEL if legacy.exists() else DEFAULT_LABEL
+
 Runner = Callable[..., subprocess.CompletedProcess]
 
 
@@ -30,7 +41,7 @@ def build_launchd_plist(
     arguments = [
         python,
         "-m",
-        "clash_verge_traffic_ledger",
+        "clash_verge_monitor",
         "run",
         "--interval",
         f"{interval:g}",

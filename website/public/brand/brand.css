@@ -120,9 +120,9 @@ body.brand-site { background: var(--paper); color: var(--ink); font-family: var(
 .brand-emomo .intro li:before { color: var(--blue); border-color: var(--line); }
 .brand-emomo .text-button { color: var(--blue); }
 /* Device and network pages preserve their labelled conceptual diagrams. */
-.brand-fan .hero, .brand-route .hero, .brand-ledger .hero { grid-template-columns: 1fr 1.08fr; gap: 54px; }
-.brand-fan .hero h1, .brand-route .hero h1, .brand-ledger .hero h1 { font-size: clamp(38px, 4.4vw, 54px); }
-.brand-fan .hero .intro, .brand-route .hero .intro, .brand-ledger .hero .intro { font-size: 16px; }
+.brand-fan .hero, .brand-route .hero, .brand-monitor .hero { grid-template-columns: 1fr 1.08fr; gap: 54px; }
+.brand-fan .hero h1, .brand-route .hero h1, .brand-monitor .hero h1 { font-size: clamp(38px, 4.4vw, 54px); }
+.brand-fan .hero .intro, .brand-route .hero .intro, .brand-monitor .hero .intro { font-size: 16px; }
 .brand-site .product-visual .window { transform: none; border-color: var(--line); border-radius: 15px; box-shadow: 0 22px 44px #20314910; }
 .brand-site .signal { display: none; }
 .brand-site .preview-caption { font-family: var(--sans); font-size: 11px; }
@@ -166,7 +166,7 @@ body.brand-site { background: var(--paper); color: var(--ink); font-family: var(
   .brand-quota .hero-product { padding: 70px 0 0 36px; min-height: 330px; }
   .brand-quota .hero-menu-window { width: 120px; }
   .brand-quota .showcase-panel { min-height: 340px; }
-  .brand-fan .hero, .brand-route .hero, .brand-ledger .hero, .brand-smb .hero { gap: 28px; }
+  .brand-fan .hero, .brand-route .hero, .brand-monitor .hero, .brand-smb .hero { gap: 28px; }
   .brand-site .hero .intro, .brand-site .hero-description, .brand-site .hero-lead { font-size: 16px; }
   .brand-emomo .hero { gap: 28px; grid-template-columns: 1.3fr .7fr; }
   .brand-emomo .hero h1 { font-size: 46px; }
@@ -229,7 +229,7 @@ body.brand-site { background: var(--paper); color: var(--ink); font-family: var(
   .brand-quota .hero-menu-window { width: 104px; }
   .brand-quota .showcase-panel { min-height: 315px; }
   .brand-site .nav-links { gap: 12px; font-size: 10px; }
-  .brand-site .studio-identity .brand-ledger .brand-name { max-width: 156px; }
+  .brand-site .studio-identity .brand-monitor .brand-name { max-width: 156px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

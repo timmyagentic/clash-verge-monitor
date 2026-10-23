@@ -29,7 +29,7 @@ def envelope(
     timestamp = generated_at or datetime.now(timezone.utc)
     return {
         "schema_version": SCHEMA_VERSION,
-        "runtime": {"name": "clash-verge-traffic-ledger", "version": __version__},
+        "runtime": {"name": "clash-verge-monitor", "version": __version__},
         "ok": ok,
         "operation": operation,
         "generated_at": timestamp.astimezone(timezone.utc).isoformat(),

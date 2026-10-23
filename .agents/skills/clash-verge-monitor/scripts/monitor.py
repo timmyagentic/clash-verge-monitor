@@ -14,7 +14,7 @@ from lib.paths import default_app_root, discover_source, load_manifest
 
 
 DEFAULT_CONTROLLER = "auto"
-DEFAULT_LABEL = "com.timmy.clash-verge-traffic-ledger"
+DEFAULT_LABEL = "com.timmy.clash-verge-monitor"
 
 
 class MachineParser(argparse.ArgumentParser):
@@ -25,7 +25,7 @@ class MachineParser(argparse.ArgumentParser):
 
 
 def add_runtime_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--app-root", default=str(default_app_root()))
+    parser.add_argument("--app-root", default=None)
     parser.add_argument("--database", default=None)
     parser.add_argument("--runtime-python", default=None)
     parser.add_argument("--runtime-source", default=None, help="Explicit source checkout; overrides installed runtime")
@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_runtime_args(health)
     health.add_argument("--controller", default=None)
     health.add_argument("--secret-file", default=None)
-    health.add_argument("--service-label", default=DEFAULT_LABEL)
+    health.add_argument("--service-label", default=None)
     health.add_argument("--max-sample-age", type=float, default=180.0)
     health.add_argument("--no-controller-check", action="store_true")
     health.add_argument("--no-service-check", action="store_true")
@@ -91,7 +91,7 @@ def resolve_runtime(args: argparse.Namespace) -> tuple[Path, Path, dict[str, str
     source = discover_source()
     if args.runtime_source:
         source = Path(args.runtime_source).expanduser().resolve()
-        if not (source / 'src' / 'clash_verge_traffic_ledger' / '__main__.py').is_file():
+        if not (source / 'src' / 'clash_verge_monitor' / '__main__.py').is_file():
             raise FileNotFoundError('runtime source is not a ledger checkout')
 
     runtime_python: Path | None = None
@@ -137,7 +137,7 @@ def resolve_runtime(args: argparse.Namespace) -> tuple[Path, Path, dict[str, str
 
 def core_arguments(args: argparse.Namespace, database: Path) -> list[str]:
     core_command = "maintenance" if args.command == "maintain" else args.command
-    values = ["-m", "clash_verge_traffic_ledger", core_command]
+    values = ["-m", getattr(args, "runtime_module", "clash_verge_monitor"), core_command]
     if args.command == 'capabilities':
         return values
     values += ["--database", str(database)]
@@ -202,11 +202,16 @@ def invoke(args: argparse.Namespace) -> int:
         'database': str(database),
         'installed_version': manifest.get('version'),
     }
+    args.runtime_module = "clash_verge_monitor"
+    if manifest and not args.runtime_source and not args.runtime_python:
+        args.runtime_module = manifest.get("runtime_module", "clash_verge_traffic_ledger")
+    if args.command == 'health' and args.service_label is None:
+        args.service_label = Path(manifest["sampler_plist"]).stem if manifest.get("sampler_plist") else DEFAULT_LABEL
     if args.command == 'health' and args.controller is None:
         manifest = load_manifest(Path(args.app_root).expanduser().resolve()) or {}
         args.controller = manifest.get('controller') or DEFAULT_CONTROLLER
     if args.command in ('explore', 'capabilities'):
-        probe = subprocess.run([str(runtime_python), '-m', 'clash_verge_traffic_ledger', 'capabilities'],
+        probe = subprocess.run([str(runtime_python), '-m', args.runtime_module, 'capabilities'],
                                capture_output=True, text=True, env=environment, check=False)
         try:
             supported = json.loads(probe.stdout)
@@ -265,6 +270,8 @@ def invoke(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.app_root is None:
+            args.app_root = str(default_app_root())
         return invoke(args)
     except OSError as exc:
         emit(payload(args.command, None, ok=False, errors=[error('runtime_unavailable', str(exc))]), pretty=args.pretty)

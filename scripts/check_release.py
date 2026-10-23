@@ -22,7 +22,7 @@ def project_version(root: Path = ROOT) -> str:
 
 
 def package_version(root: Path = ROOT) -> str:
-    source = root / "src" / "clash_verge_traffic_ledger" / "__init__.py"
+    source = root / "src" / "clash_verge_monitor" / "__init__.py"
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     for statement in tree.body:
         if not isinstance(statement, ast.Assign):
@@ -67,7 +67,7 @@ def git_changes(root: Path = ROOT) -> list[str]:
 
 def distribution_errors(dist_dir: Path, version: str) -> list[str]:
     errors: list[str] = []
-    normalized_name = "clash_verge_traffic_ledger"
+    normalized_name = "clash_verge_monitor"
     sdist = dist_dir / f"{normalized_name}-{version}.tar.gz"
     wheel = dist_dir / f"{normalized_name}-{version}-py3-none-any.whl"
     for artifact in [sdist, wheel]:
@@ -79,11 +79,11 @@ def distribution_errors(dist_dir: Path, version: str) -> list[str]:
     with tarfile.open(sdist, "r:gz") as archive:
         sdist_names = archive.getnames()
     required_sdist_suffixes = [
-        "/.agents/skills/clash-verge-traffic-auditor/SKILL.md",
+        "/.agents/skills/clash-verge-monitor/SKILL.md",
         "/CHANGELOG.md",
         "/docs/releasing.md",
         "/scripts/check_release.py",
-        "/src/clash_verge_traffic_ledger/__init__.py",
+        "/src/clash_verge_monitor/__init__.py",
     ]
     for suffix in required_sdist_suffixes:
         if not any(name.endswith(suffix) for name in sdist_names):
@@ -96,24 +96,24 @@ def distribution_errors(dist_dir: Path, version: str) -> list[str]:
             metadata = Parser().parsestr(archive.read(metadata_name).decode("utf-8"))
             if metadata.get("Version") != version:
                 errors.append("wheel metadata version does not match source")
-        asset_root = ROOT / "src/clash_verge_traffic_ledger/assets"
+        asset_root = ROOT / "src/clash_verge_monitor/assets"
         for asset in asset_root.rglob("*"):
             if not asset.is_file():
                 continue
-            member = "clash_verge_traffic_ledger/assets/" + asset.relative_to(asset_root).as_posix()
+            member = "clash_verge_monitor/assets/" + asset.relative_to(asset_root).as_posix()
             if member not in wheel_names or archive.read(member) != asset.read_bytes():
                 errors.append(f"wheel asset missing or changed: {member}")
     with tarfile.open(sdist, "r:gz") as archive:
         members = {member.name: member for member in archive.getmembers() if member.isfile()}
-        for asset in (ROOT / "src/clash_verge_traffic_ledger/assets").rglob("*"):
+        for asset in (ROOT / "src/clash_verge_monitor/assets").rglob("*"):
             if not asset.is_file():
                 continue
-            suffix = "/src/clash_verge_traffic_ledger/assets/" + asset.relative_to(asset_root).as_posix()
+            suffix = "/src/clash_verge_monitor/assets/" + asset.relative_to(asset_root).as_posix()
             matches = [name for name in members if name.endswith(suffix)]
             if len(matches) != 1 or archive.extractfile(members[matches[0]]).read() != asset.read_bytes():
                 errors.append(f"sdist asset missing or changed: {suffix}")
     required_wheel_suffixes = [
-        "clash_verge_traffic_ledger/__init__.py",
+        "clash_verge_monitor/__init__.py",
         f"{normalized_name}-{version}.dist-info/METADATA",
         f"{normalized_name}-{version}.dist-info/entry_points.txt",
     ]

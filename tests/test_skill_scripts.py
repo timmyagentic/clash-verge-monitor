@@ -11,14 +11,14 @@ from unittest.mock import patch
 from datetime import datetime, timezone
 from pathlib import Path
 
-from clash_verge_traffic_ledger.models import TrafficDelta
-from clash_verge_traffic_ledger.store import LedgerStore
+from clash_verge_monitor.models import TrafficDelta
+from clash_verge_monitor.store import LedgerStore
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / ".agents" / "skills" / "clash-verge-traffic-auditor"
+SKILL = ROOT / ".agents" / "skills" / "clash-verge-monitor"
 BOOTSTRAP = SKILL / "scripts" / "bootstrap.py"
-AUDITOR = SKILL / "scripts" / "traffic_auditor.py"
+AUDITOR = SKILL / "scripts" / "monitor.py"
 
 
 def run_json(script, *arguments, cwd=ROOT):
@@ -175,7 +175,7 @@ class BootstrapScriptTests(unittest.TestCase):
             self.assertTrue(runtime_python.is_file())
             self.assertEqual(Path(second_manifest["database"]), database.resolve())
 
-            sampler_plist = launch_agents / "com.timmy.clash-verge-traffic-ledger.plist"
+            sampler_plist = launch_agents / "com.timmy.clash-verge-monitor.plist"
             plist_bytes = sampler_plist.read_bytes()
             plist = plistlib.loads(plist_bytes)
             self.assertEqual(plist["ProgramArguments"][0], str(runtime_python))
@@ -186,7 +186,7 @@ class BootstrapScriptTests(unittest.TestCase):
             copied_skill = root / "copied-skill"
             shutil.copytree(SKILL, copied_skill)
             completed, audit = run_json(
-                copied_skill / "scripts" / "traffic_auditor.py",
+                copied_skill / "scripts" / "monitor.py",
                 "audit",
                 "--app-root",
                 app_root,
@@ -205,7 +205,7 @@ class BootstrapScriptTests(unittest.TestCase):
                 [
                     str(runtime_python),
                     "-c",
-                    "import clash_verge_traffic_ledger as p; print(p.__file__)",
+                    "import clash_verge_monitor as p; print(p.__file__)",
                 ],
                 cwd=root,
                 capture_output=True,
@@ -241,7 +241,7 @@ class RollbackTests(unittest.TestCase):
             manifest={'runtime_python':sys.executable,'database':str(db),'version':'test','database_schema_max':2}
             (app/'install.json').write_text(json.dumps(manifest))
             for label in (bootstrap.SAMPLER_LABEL,bootstrap.WEB_LABEL):
-                (agents/f'{label}.plist').write_bytes(plistlib.dumps({'Label':label,'ProgramArguments':[sys.executable,'-m','clash_verge_traffic_ledger','run','--database',str(db)]}))
+                (agents/f'{label}.plist').write_bytes(plistlib.dumps({'Label':label,'ProgramArguments':[sys.executable,'-m','clash_verge_monitor','run','--database',str(db)]}))
             checkpoint=bootstrap.save_checkpoint(app,agents)
             before=(app/'install.json').read_bytes()
             args=['rollback','--app-root',app,'--launch-agents-dir',agents,'--checkpoint',checkpoint]
@@ -261,8 +261,99 @@ class AssetRuntimeTests(unittest.TestCase):
     def test_assets_participate_in_runtime_identity(self):
         bootstrap=load_bootstrap_module()
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);package=root/'src'/'clash_verge_traffic_ledger';(package/'assets').mkdir(parents=True)
+            root=Path(tmp);package=root/'src'/'clash_verge_monitor';(package/'assets').mkdir(parents=True)
             (package/'__init__.py').write_text('')
             css=package/'assets'/'dashboard.css';css.write_text('before')
             before=bootstrap.runtime_digest(root);css.write_text('after')
             self.assertNotEqual(before,bootstrap.runtime_digest(root))
+
+
+class RenameCompatibilityTests(unittest.TestCase):
+    def test_old_and_new_module_return_same_capabilities(self):
+        documents = []
+        for module in ("clash_verge_monitor", "clash_verge_traffic_ledger"):
+            result = subprocess.run([sys.executable, "-m", module, "capabilities"],
+                                    capture_output=True, text=True, check=True)
+            documents.append(json.loads(result.stdout))
+        self.assertEqual(documents[0]["data"], documents[1]["data"])
+        self.assertEqual(documents[1]["runtime"]["name"], "clash-verge-monitor")
+
+    def test_default_root_keeps_legacy_data_and_rejects_ambiguity(self):
+        bootstrap = load_bootstrap_module()
+        from lib.paths import default_app_root
+        with tempfile.TemporaryDirectory() as tmp, patch("pathlib.Path.home", return_value=Path(tmp)):
+            base = Path(tmp) / "Library/Application Support"
+            self.assertEqual(default_app_root().name, "clash-verge-monitor")
+            old = base / "clash-verge-traffic-ledger"
+            old.mkdir(parents=True)
+            (old / "data").mkdir()
+            self.assertEqual(default_app_root(), old)
+            (base / "clash-verge-monitor").mkdir()
+            with self.assertRaisesRegex(ValueError, "Both"):
+                default_app_root()
+
+    def test_upgrade_keeps_custom_database_and_service_identity(self):
+        bootstrap = load_bootstrap_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); app = root / "old-app"; agents = root / "agents"
+            app.mkdir(); agents.mkdir()
+            database = root / "custom-history.sqlite"
+            seed_database(database)
+            before = database.read_bytes()
+            label = "com.timmy.clash-verge-traffic-ledger"
+            manifest = {"database": str(database), "runtime_python": sys.executable,
+                        "sampler_plist": str(agents / f"{label}.plist"),
+                        "installed_at": "previous-install"}
+            (app / "install.json").write_text(json.dumps(manifest))
+            for name in (label, label + ".web"):
+                (agents / f"{name}.plist").write_bytes(plistlib.dumps({
+                    "Label": name, "WorkingDirectory": str(app),
+                    "ProgramArguments": [sys.executable, "-m", "clash_verge_traffic_ledger"]}))
+            for _ in range(2):
+                result, doc = run_json(BOOTSTRAP, "install", "--source", ROOT,
+                                      "--app-root", app, "--launch-agents-dir", agents)
+                self.assertEqual(result.returncode, 0, doc)
+                saved = doc["data"]["manifest"]
+                self.assertEqual(saved["database"], str(database.resolve()))
+                self.assertEqual(saved["installed_at"], "previous-install")
+                self.assertEqual(saved["runtime_module"], "clash_verge_monitor")
+                self.assertEqual(database.read_bytes(), before)
+                self.assertEqual(len(list(agents.glob("*.plist"))), 2)
+                plist = plistlib.loads((agents / f"{label}.plist").read_bytes())
+                self.assertEqual(plist["ProgramArguments"][2], "clash_verge_monitor")
+            result, doc = run_json(AUDITOR, "audit", "--app-root", app, "--end-date", "2026-07-19")
+            self.assertEqual(result.returncode, 0, doc)
+            self.assertEqual(doc["data"]["summary"]["total_bytes"], 30)
+            # Old copied Skills still invoke the legacy module in the upgraded runtime.
+            result = subprocess.run([saved["runtime_python"], "-I", "-m",
+                                     "clash_verge_traffic_ledger", "capabilities"],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["runtime"]["name"], "clash-verge-monitor")
+
+    def test_duplicate_services_fail_before_writing(self):
+        bootstrap = load_bootstrap_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); agents = root / "agents"; agents.mkdir()
+            for label in ("com.timmy.clash-verge-monitor", "com.timmy.clash-verge-traffic-ledger"):
+                (agents / f"{label}.plist").write_bytes(b"existing")
+            result, doc = run_json(BOOTSTRAP, "install", "--source", ROOT,
+                                  "--app-root", root / "app", "--launch-agents-dir", agents)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((root / "app").exists())
+            self.assertIn("Both", doc["errors"][0]["message"])
+
+
+class ForeignServiceRenameTests(unittest.TestCase):
+    def test_legacy_service_in_another_root_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); agents = root / "agents"; agents.mkdir()
+            path = agents / "com.timmy.clash-verge-traffic-ledger.plist"
+            original = plistlib.dumps({"WorkingDirectory": str(root / "other")})
+            path.write_bytes(original)
+            result, doc = run_json(BOOTSTRAP, "install", "--source", ROOT,
+                                  "--app-root", root / "new", "--launch-agents-dir", agents)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("another installation", doc["errors"][0]["message"])
+            self.assertEqual(path.read_bytes(), original)
+            self.assertFalse((root / "new").exists())

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clash Verge Monitor"
+  short_description: "Audit Clash Verge traffic with local evidence"
+  default_prompt: "Use $clash-verge-monitor to analyze the last seven days of Clash Verge traffic for anomalies."

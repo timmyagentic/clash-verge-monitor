@@ -4,7 +4,7 @@
 
 ## 版本与兼容性
 
-稳定版沿现有版本线连续递增 patch：`0.3.0` → `0.3.1` → `0.3.2`。原 `0.4.0rc1` 从未正式发布，其功能整合进入 `0.3.1`，旧候选验证记录保留原标签。应用版本不等于数据库 schema；`0.3.1` 与该候选均使用 schema 2。Agent HTTP 结果在 `data` 字段，旧客户端须按[机器契约](../.agents/skills/clash-verge-traffic-auditor/references/output-contract.md)读取。
+稳定版沿现有版本线连续递增 patch：`0.3.0` → `0.3.1` → `0.3.2`。原 `0.4.0rc1` 从未正式发布，其功能整合进入 `0.3.1`，旧候选验证记录保留原标签。应用版本不等于数据库 schema；`0.3.1` 与该候选均使用 schema 2。Agent HTTP 结果在 `data` 字段，旧客户端须按[机器契约](../.agents/skills/clash-verge-monitor/references/output-contract.md)读取。
 
 发布不清理历史、不改保留策略、不自动覆盖或移动账本。schema 2 升级只采用原库；仅低于 schema 2 的数据库需要迁移前备份与事务迁移。
 
@@ -17,7 +17,7 @@ python3 -m pip install -r requirements-dev.txt
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -B -W error::ResourceWarning -m unittest discover -s tests -v
 PYTHONPATH=src python3 -m compileall -q src tests scripts
 python3 scripts/check_repository_policy.py --allow-dirty
-python3 "$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py" .agents/skills/clash-verge-traffic-auditor
+python3 "$CODEX_HOME/skills/.system/skill-creator/scripts/quick_validate.py" .agents/skills/clash-verge-monitor
 git diff --check
 python3 -m build
 python3 -m twine check dist/*.whl dist/*.tar.gz
@@ -43,9 +43,9 @@ git push origin v0.3.1
 Tag 推送触发 Release 工作流，重复完整 CI，要求 tag commit 等于当前 main；随后构建、Twine 校验、包内容与版本检查、隔离 wheel 安装烟测，再生成校验和并创建 Release。只有 publish job 拥有 `contents: write`。已存在的 Release 创建失败，不覆盖或删除资产。不要并行手动创建同名 Release。
 
 ```sh
-gh run list --repo timmyagentic/clash-verge-traffic-ledger --workflow release.yml --limit 5
-gh release view v0.3.1 --repo timmyagentic/clash-verge-traffic-ledger
-gh release download v0.3.1 --repo timmyagentic/clash-verge-traffic-ledger --dir /absolute/new/download-directory
+gh run list --repo timmyagentic/clash-verge-monitor --workflow release.yml --limit 5
+gh release view v0.3.1 --repo timmyagentic/clash-verge-monitor
+gh release download v0.3.1 --repo timmyagentic/clash-verge-monitor --dir /absolute/new/download-directory
 ```
 
 在下载目录执行 `shasum -a 256 -c SHA256SUMS`；用下载的 wheel 再执行隔离安装烟测。核对 tag、main commit、Release 资产版本、下载哈希与工作流结论后，才称为正式发布。官网更新在 Release 可下载后部署，并读回版本链接。
@@ -55,15 +55,15 @@ gh release download v0.3.1 --repo timmyagentic/clash-verge-traffic-ledger --dir 
 先运行 bootstrap status 和 health，记录安装清单、数据库绝对路径、schema、服务参数与心跳；从干净 tag 工作树预演：
 
 ```sh
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py install --source "$PWD" --database /absolute/existing/ledger.sqlite --dry-run --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/bootstrap.py install --source "$PWD" --database /absolute/existing/ledger.sqlite --dry-run --pretty
 ```
 
 确认 `database_action=adopt_existing`、schema 2、控制器/采样间隔/监听范围正确。切换前记录原始明细最大 ID、行数、内容校验和和已结束日期汇总。升级仅切换运行时，保留原库、旧运行时、安装清单/plist checkpoint 和日志；不执行 retention、prune、compact、VACUUM 或历史重建。
 
 ```sh
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py install --source "$PWD" --database /absolute/existing/ledger.sqlite --load --pretty
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/bootstrap.py status --pretty
-python3 .agents/skills/clash-verge-traffic-auditor/scripts/traffic_auditor.py health --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/bootstrap.py install --source "$PWD" --database /absolute/existing/ledger.sqlite --load --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/bootstrap.py status --pretty
+python3 .agents/skills/clash-verge-monitor/scripts/monitor.py health --pretty
 ```
 
 升级后验收：版本/tag commit、`source_modified: false`、原数据库路径/schema、切换前所有原始行内容相同、已结束日期日/小时汇总及心跳不变，两个服务 running、心跳推进、自然流量增长、网页与 API 可用。维护期间的采样断档应如实记录。失败时使用安装 checkpoint 恢复旧运行时，不覆盖或降级真实账本。

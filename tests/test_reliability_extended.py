@@ -8,12 +8,12 @@ from pathlib import Path
 from unittest.mock import patch
 from dataclasses import replace
 
-from clash_verge_traffic_ledger.store import LedgerStore
-from clash_verge_traffic_ledger.monitor import Sampler, DeltaComputer
-from clash_verge_traffic_ledger.health import inspect_health
-from clash_verge_traffic_ledger.client import ControllerConfig
-from clash_verge_traffic_ledger.explore import explore
-from clash_verge_traffic_ledger.audit import audit_traffic
+from clash_verge_monitor.store import LedgerStore
+from clash_verge_monitor.monitor import Sampler, DeltaComputer
+from clash_verge_monitor.health import inspect_health
+from clash_verge_monitor.client import ControllerConfig
+from clash_verge_monitor.explore import explore
+from clash_verge_monitor.audit import audit_traffic
 from test_monitor import snapshot
 
 
@@ -207,7 +207,7 @@ class ExtendedReliabilityTests(unittest.TestCase):
         self.assertIn("sampling_coverage_incomplete", [w["code"] for w in warnings])
 
     def test_csv_formula_escaping(self):
-        from clash_verge_traffic_ledger.dashboard import to_csv
+        from clash_verge_monitor.dashboard import to_csv
 
         data = {
             "rows": [

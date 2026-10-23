@@ -7,13 +7,13 @@ from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
 
-from clash_verge_traffic_ledger.anomalies import detect_anomalies
-from clash_verge_traffic_ledger.__main__ import build_parser, main
-from clash_verge_traffic_ledger.models import TrafficDelta
-from clash_verge_traffic_ledger.service import build_launchd_plist, service_state
-from clash_verge_traffic_ledger.status import build_status, format_status
-from clash_verge_traffic_ledger.store import LedgerStore
-from clash_verge_traffic_ledger.web import render_dashboard
+from clash_verge_monitor.anomalies import detect_anomalies
+from clash_verge_monitor.__main__ import build_parser, main
+from clash_verge_monitor.models import TrafficDelta
+from clash_verge_monitor.service import build_launchd_plist, service_state
+from clash_verge_monitor.status import build_status, format_status
+from clash_verge_monitor.store import LedgerStore
+from clash_verge_monitor.web import render_dashboard
 
 
 def delta(ts, process, host, upload, download):
@@ -68,7 +68,7 @@ class ServiceTests(unittest.TestCase):
             [
                 "/tmp/venv/bin/python",
                 "-m",
-                "clash_verge_traffic_ledger",
+                "clash_verge_monitor",
                 "run",
                 "--interval",
                 "2.5",
@@ -223,7 +223,7 @@ class WebDashboardTests(unittest.TestCase):
 
             html = render_dashboard(store, "2026-07-02", status)
 
-            self.assertIn("<title>Clash Verge Traffic Ledger</title>", html)
+            self.assertIn("<title>Clash Verge Monitor</title>", html)
             self.assertIn("2026-07-02", html)
             self.assertIn("Cursor", html)
             self.assertIn("api.cursor.sh", html)
