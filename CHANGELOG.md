@@ -4,7 +4,7 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
-## [0.3.2] - Unreleased
+## [0.3.2] - 2026-10-24
 
 ### Added
 
