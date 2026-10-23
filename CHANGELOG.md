@@ -4,6 +4,10 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
+## [Unreleased]
+
+- Enable disabled launchd jobs before bootstrapping them so install, upgrade and rollback can restart services on macOS. This fix is newer than the immutable v0.3.2 release.
+
 ## [0.3.2] - 2026-10-24
 
 ### Added

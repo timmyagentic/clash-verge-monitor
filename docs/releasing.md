@@ -69,3 +69,16 @@ python3 .agents/skills/clash-verge-monitor/scripts/monitor.py health --pretty
 升级后验收：版本/tag commit、`source_modified: false`、原数据库路径/schema、切换前所有原始行内容相同、已结束日期日/小时汇总及心跳不变，两个服务 running、心跳推进、自然流量增长、网页与 API 可用。维护期间的采样断档应如实记录。失败时使用安装 checkpoint 恢复旧运行时，不覆盖或降级真实账本。
 
 真实整机休眠/唤醒、整机重启及无法执行的外部场景标记 UNVERIFIED；服务重启和合成测试不能替代这些证据。
+
+
+## v0.3.2 安装器的 launchd 注意事项
+
+v0.3.2 源码中的 bootstrap `--load` 先 disable、后 bootstrap，可能导致 macOS 返回错误 5。已发布 tag 和资产保持不变；main 已将顺序修复为先 enable 再 bootstrap，该修复将在下一次维护发布中包含。使用 v0.3.2 时先执行不带 `--load` 的 install，保留原配置参数，再逐个启用并载入安装清单中的 sampler/web 服务。示例（替换为安装清单中的实际值）：
+
+```sh
+launchctl enable "gui/$(id -u)/<service-label>"
+launchctl bootstrap "gui/$(id -u)" "/absolute/path/to/<service-label>.plist"
+launchctl kickstart -k "gui/$(id -u)/<service-label>"
+```
+
+操作前停止旧进程并记录历史数据校验值；先启用，再载入，不移动或重建账本。采样中断时间必须如实记录。
