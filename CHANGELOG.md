@@ -8,6 +8,8 @@ runtime.
 
 ### Documentation
 
+- Show the real dashboard with an isolated example ledger, improve mobile installation text, and add a share preview and a single portfolio footer.
+
 - Add matching README and website Agent-install prompts and an end-to-end installation guide covering verified release sources, Skill setup, preserved settings/history and real background acceptance.
 
 ## [0.3.3] - 2026-10-25
