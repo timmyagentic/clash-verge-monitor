@@ -4,6 +4,12 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
+## [Unreleased]
+
+### Documentation
+
+- Add matching README and website Agent-install prompts and an end-to-end installation guide covering verified release sources, Skill setup, preserved settings/history and real background acceptance.
+
 ## [0.3.3] - 2026-10-25
 
 ### Fixed

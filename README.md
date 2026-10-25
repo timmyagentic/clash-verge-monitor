@@ -10,6 +10,19 @@ The runtime records future traffic from the Mihomo controller, attributes bytes 
 
 For the full Chinese project context and current MVP status, see [docs/project-brief.zh-CN.md](docs/project-brief.zh-CN.md).
 
+## Install with an AI agent
+
+Paste this into your local coding Agent:
+
+> Install the latest official stable Clash Verge Monitor on this Mac and start
+> background monitoring. Follow
+> <https://raw.githubusercontent.com/timmyagentic/clash-verge-monitor/main/INSTALL.md>,
+> preserve existing configuration and ledger history, install the Skill for this
+> Agent, and verify live sampling and the local dashboard.
+
+The [installation guide](INSTALL.md) covers Python/controller prerequisites,
+verified downloads, existing installations, Skill setup and background acceptance.
+
 ## Current release
 
 `0.3.3` fixes macOS service reload after a launchd job has been disabled.
@@ -106,7 +119,8 @@ maintenance also default to a dry run.
 
 The repository release and the locally installed runtime are separate states.
 Use `bootstrap.py status` to inspect the installed version and provenance; only
-deploy from a clean tagged checkout after the release artifacts are verified.
+deploy from a verified official release source archive or a clean checkout of
+the same release tag.
 
 ## Developer quick start
 
