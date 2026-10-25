@@ -6,6 +6,8 @@ runtime.
 
 ## [Unreleased]
 
+- Collapse the daily CI matrix into two required Linux/macOS jobs while retaining policy, real launchd and distribution installation checks.
+
 
 - Document the protected squash PR workflow, automatic remote task-branch deletion and existing local branch/worktree archive boundaries.
 ### Documentation

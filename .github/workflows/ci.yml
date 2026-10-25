@@ -1,76 +1,63 @@
 name: CI
-
-on:
+'on':
   pull_request:
-    branches: [main]
+    branches:
+    - main
   push:
-    branches: [main]
-  workflow_call:
-  workflow_dispatch:
-
+    branches:
+    - main
+  workflow_call: null
+  workflow_dispatch: null
 permissions:
   contents: read
-
 jobs:
-  policy:
-    name: Repository policy
+  linux:
+    name: Linux checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.14'
-      - run: python -m pip install -r requirements-dev.txt
-      - run: python scripts/check_repository_policy.py
-      - run: node --check website/public/site.js
-      - run: node --test website/worker.test.mjs
-      - run: git diff --check
-
-  tests:
-    name: Tests (${{ matrix.os }}, ${{ matrix.python }})
-    runs-on: ${{ matrix.os }}
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.11'
+    - run: python -m pip install -r requirements-dev.txt
+    - run: python scripts/check_repository_policy.py
+    - run: node --check website/public/site.js
+    - run: node --test website/worker.test.mjs
+    - run: git diff --check
+    - run: python -B -W error::ResourceWarning -m unittest discover -s tests -v
+    - run: python -m compileall -q src tests scripts
+    - run: python -m build
+    - run: python -m twine check dist/*.whl dist/*.tar.gz
+    - run: python scripts/check_release.py --dist-dir dist
+    - run: python scripts/verify_distribution.py --dist-dir dist
+    env:
+      PYTHONPATH: src
+      PYTHONDONTWRITEBYTECODE: '1'
+  macos:
+    name: macOS checks
+    runs-on: macos-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python: ['3.11', '3.14']
     env:
       PYTHONPATH: src
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: ${{ matrix.python }}
-      - run: python -B -W error::ResourceWarning -m unittest discover -s tests -v
-      - name: Verify disabled service reload with real launchd
-        if: runner.os == 'macOS'
-        env:
-          CVM_TEST_LAUNCHD: '1'
-        run: python -B -W error::ResourceWarning -m unittest discover -s tests -p test_launchd_real.py -v
-      - run: python -m compileall -q src tests scripts
-
-  distribution:
-    name: Distribution
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.14'
-      - run: python -m pip install -r requirements-dev.txt
-      - run: python -m build
-      - run: python -m twine check dist/*.whl dist/*.tar.gz
-      - run: python scripts/check_release.py --dist-dir dist
-      - run: python scripts/verify_distribution.py --dist-dir dist
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.14'
+    - run: python -B -W error::ResourceWarning -m unittest discover -s tests -v
+    - name: Verify disabled service reload with real launchd
+      if: runner.os == 'macOS'
+      env:
+        CVM_TEST_LAUNCHD: '1'
+      run: python -B -W error::ResourceWarning -m unittest discover -s tests -p test_launchd_real.py -v
+    - run: python -m compileall -q src tests scripts
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true

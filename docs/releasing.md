@@ -25,7 +25,7 @@ python3 scripts/check_release.py --allow-dirty --dist-dir dist
 python3 scripts/verify_distribution.py --dist-dir dist
 ```
 
-提交并推送 PR 后，等待精确 head 的六项检查：Repository policy、四组 OS/Python Tests、Distribution。规则来源为 `.github/main-ruleset.json`，要求分支最新、讨论解决、squash 合并、禁止 force/delete，无 bypass actor。单维护者不设第二人批准要求。确认 Ready、可合并、head/base 未漂移后，用 `gh pr merge --squash --match-head-commit <sha>`；禁止 `--admin`。
+提交并推送 PR 后，等待精确 head 的两项检查：Linux checks（策略、Python 3.11 测试与分发安装）、macOS checks（Python 3.14 测试与真实 launchd）。规则来源为 `.github/main-ruleset.json`，要求分支最新、讨论解决、squash 合并、禁止 force/delete，无 bypass actor。单维护者不设第二人批准要求。确认 Ready、可合并、head/base 未漂移后，用 `gh pr merge --squash --match-head-commit <sha>`；禁止 `--admin`。
 
 `.github/tag-ruleset.json` 禁止更新和删除已创建的发行 tag。配置改动通过 GitHub API 应用，并读回完整规则，不能只提交 JSON 就声称门禁生效。
 
@@ -87,7 +87,7 @@ launchctl kickstart -k "gui/$(id -u)/<service-label>"
 
 在已登录 GUI 的 Mac 上运行以下 opt-in 检查。测试使用随机 label 和临时目录，
 不会选择已有 sampler/web 服务、控制器或账本；结束后移除测试任务。
-两组 macOS CI 也执行相同检查。模拟调用顺序测试仍作为可移植单元测试保留。
+macOS CI 也执行相同检查。模拟调用顺序测试仍作为可移植单元测试保留。
 
 ```sh
 CVM_TEST_LAUNCHD=1 PYTHONPATH=src python3 -B -W error::ResourceWarning -m unittest discover -s tests -p test_launchd_real.py -v
