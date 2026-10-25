@@ -9,6 +9,6 @@
 
 ## 合并与发布
 
-- 等待精确 PR head 的六项必需 CI 检查通过，并解决所有讨论。
+- 等待精确 PR head 的 Linux checks 与 macOS checks 两项必需 CI 检查通过，并解决所有讨论。
 - 使用 squash 合并；禁止绕过保护、直接推送 main 或覆盖发行 tag。
 - 稳定版沿现有版本线连续递增 patch；发布与本机升级分别验收。

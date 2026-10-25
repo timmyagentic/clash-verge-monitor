@@ -59,7 +59,7 @@ Version 0.3.3 retains the new package/module names introduced in 0.3.2. Existing
 their historical database and service identity.
 [CI](https://github.com/timmyagentic/clash-verge-monitor/actions/workflows/ci.yml)
 checks four OS/Python combinations, repository policy, and distribution builds and
-fresh wheel installation. Main requires an up-to-date PR, all six checks and
+fresh wheel installation. Main requires an up-to-date PR, both Linux/macOS checks and
 resolved discussions, with no bypass actors. See [CONTRIBUTING.md](CONTRIBUTING.md)
 and [the release process](docs/releasing.md).
 

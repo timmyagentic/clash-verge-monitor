@@ -9,7 +9,7 @@ python3 scripts/check_repository_policy.py --allow-dirty
 git diff --check
 ```
 
-Main requires a PR, an up-to-date branch, resolved discussions, and the six GitHub Actions checks in `.github/main-ruleset.json`. Tests run on macOS/Linux with Python 3.11/3.14; Distribution builds and checks wheel/sdist contents and installs the wheel in a fresh environment. External Actions use full commit SHAs and default permissions are read-only.
+Main requires a PR, an up-to-date branch, resolved discussions, and the two GitHub Actions checks (Linux checks and macOS checks) in `.github/main-ruleset.json`. Linux uses Python 3.11 for policy, tests and wheel/sdist installation checks; macOS uses Python 3.14 for tests and real launchd acceptance. External Actions use full commit SHAs and default permissions are read-only.
 
 This single-maintainer repository does not require a second human approval, which its author could not provide. PR/CI/discussion gates apply to administrators too; the ruleset has no bypass actors. Review the final diff and checks for the exact PR head, then use squash merge with `gh pr merge --squash --match-head-commit <sha>`. Do not use `--admin` or direct main pushes.
 
@@ -19,4 +19,4 @@ Stable versions advance one patch within the current line. `0.3.1` includes the 
 
 ## Merge and branch cleanup
 
-Follow [the repository workflow](AGENTS.md#repository-workflow-and-branch-protection): default-branch changes require a PR and squash merging, with resolved review conversations and no administrator bypass. Keep automatic remote-branch deletion enabled. Local branches and worktrees remain for the existing Tingjun Workspace archive workflow; do not use `--delete-branch` during merge. Existing CI requirements remain unchanged.
+Follow [the repository workflow](AGENTS.md#repository-workflow-and-branch-protection): default-branch changes require a PR and squash merging, with resolved review conversations and no administrator bypass. Keep automatic remote-branch deletion enabled. Local branches and worktrees remain for the existing Tingjun Workspace archive workflow; do not use `--delete-branch` during merge. The minimal CI checks are documented in AGENTS.md and declared in .github/main-ruleset.json.
