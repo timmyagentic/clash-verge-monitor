@@ -4,7 +4,7 @@
 
 ## 版本与兼容性
 
-稳定版沿现有版本线连续递增 patch：`0.3.0` → `0.3.1` → `0.3.2`。原 `0.4.0rc1` 从未正式发布，其功能整合进入 `0.3.1`，旧候选验证记录保留原标签。应用版本不等于数据库 schema；`0.3.1` 与该候选均使用 schema 2。Agent HTTP 结果在 `data` 字段，旧客户端须按[机器契约](../.agents/skills/clash-verge-monitor/references/output-contract.md)读取。
+稳定版沿现有版本线连续递增 patch：`0.3.0` → `0.3.1` → `0.3.2` → `0.3.3`。原 `0.4.0rc1` 从未正式发布，其功能整合进入 `0.3.1`，旧候选验证记录保留原标签。应用版本不等于数据库 schema；`0.3.1` 与该候选均使用 schema 2。Agent HTTP 结果在 `data` 字段，旧客户端须按[机器契约](../.agents/skills/clash-verge-monitor/references/output-contract.md)读取。
 
 发布不清理历史、不改保留策略、不自动覆盖或移动账本。schema 2 升级只采用原库；仅低于 schema 2 的数据库需要迁移前备份与事务迁移。
 
@@ -31,21 +31,21 @@ python3 scripts/verify_distribution.py --dist-dir dist
 
 ## 正式发布
 
-只从干净、与远端 main 对齐且合并后 CI 通过的工作树发 tag。发布 tag 必须显式得到用户授权。以 `0.3.2` 为例：
+只从干净、与远端 main 对齐且合并后 CI 通过的工作树发 tag。发布 tag 必须显式得到用户授权。以 `0.3.3` 为例：
 
 ```sh
 git fetch origin main --tags
-python3 scripts/check_repository_policy.py --tag v0.3.2
-git tag -a v0.3.2 -m 'Release v0.3.2'
-git push origin v0.3.2
+python3 scripts/check_repository_policy.py --tag v0.3.3
+git tag -a v0.3.3 -m 'Release v0.3.3'
+git push origin v0.3.3
 ```
 
 Tag 推送触发 Release 工作流，重复完整 CI，要求 tag commit 等于当前 main；随后构建、Twine 校验、包内容与版本检查、隔离 wheel 安装烟测，再生成校验和并创建 Release。只有 publish job 拥有 `contents: write`。已存在的 Release 创建失败，不覆盖或删除资产。不要并行手动创建同名 Release。
 
 ```sh
 gh run list --repo timmyagentic/clash-verge-monitor --workflow release.yml --limit 5
-gh release view v0.3.2 --repo timmyagentic/clash-verge-monitor
-gh release download v0.3.2 --repo timmyagentic/clash-verge-monitor --dir /absolute/new/download-directory
+gh release view v0.3.3 --repo timmyagentic/clash-verge-monitor
+gh release download v0.3.3 --repo timmyagentic/clash-verge-monitor --dir /absolute/new/download-directory
 ```
 
 在下载目录执行 `shasum -a 256 -c SHA256SUMS`；用下载的 wheel 再执行隔离安装烟测。核对 tag、main commit、Release 资产版本、下载哈希与工作流结论后，才称为正式发布。官网更新在 Release 可下载后部署，并读回版本链接。
@@ -73,7 +73,7 @@ python3 .agents/skills/clash-verge-monitor/scripts/monitor.py health --pretty
 
 ## v0.3.2 安装器的 launchd 注意事项
 
-v0.3.2 源码中的 bootstrap `--load` 先 disable、后 bootstrap，可能导致 macOS 返回错误 5。已发布 tag 和资产保持不变；main 已将顺序修复为先 enable 再 bootstrap，该修复将在下一次维护发布中包含。使用 v0.3.2 时先执行不带 `--load` 的 install，保留原配置参数，再逐个启用并载入安装清单中的 sampler/web 服务。示例（替换为安装清单中的实际值）：
+v0.3.2 源码中的 bootstrap `--load` 先 disable、后 bootstrap，可能导致 macOS 返回错误 5。已发布 tag 和资产保持不变；v0.3.3 已将顺序修复为先 enable 再 bootstrap，并增加真实 macOS launchd 回归验证。使用 v0.3.2 时先执行不带 `--load` 的 install，保留原配置参数，再逐个启用并载入安装清单中的 sampler/web 服务。示例（替换为安装清单中的实际值）：
 
 ```sh
 launchctl enable "gui/$(id -u)/<service-label>"
@@ -82,3 +82,17 @@ launchctl kickstart -k "gui/$(id -u)/<service-label>"
 ```
 
 操作前停止旧进程并记录历史数据校验值；先启用，再载入，不移动或重建账本。采样中断时间必须如实记录。
+
+## 隔离的真实 launchd 回归
+
+在已登录 GUI 的 Mac 上运行以下 opt-in 检查。测试使用随机 label 和临时目录，
+不会选择已有 sampler/web 服务、控制器或账本；结束后移除测试任务。
+两组 macOS CI 也执行相同检查。模拟调用顺序测试仍作为可移植单元测试保留。
+
+```sh
+CVM_TEST_LAUNCHD=1 PYTHONPATH=src python3 -B -W error::ResourceWarning -m unittest discover -s tests -p test_launchd_real.py -v
+```
+
+检查实际证明 disabled job 的旧顺序无法启动，修复后 CLI 启动以及 Skill
+unload/reload 能在含空格的工作目录启动真实进程。该检查不替代公开包下载、
+隔离安装与后台采样验收，也不证明整机重启或休眠唤醒。

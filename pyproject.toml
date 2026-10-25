@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clash-verge-monitor"
-version = "0.3.2"
+version = "0.3.3"
 description = "Clash Verge Monitor for Mihomo-compatible cores"
 readme = "README.md"
 requires-python = ">=3.11"

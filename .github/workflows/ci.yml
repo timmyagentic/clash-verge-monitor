@@ -50,6 +50,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -B -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Verify disabled service reload with real launchd
+        if: runner.os == 'macOS'
+        env:
+          CVM_TEST_LAUNCHD: '1'
+        run: python -B -W error::ResourceWarning -m unittest discover -s tests -p test_launchd_real.py -v
       - run: python -m compileall -q src tests scripts
 
   distribution:

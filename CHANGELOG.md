@@ -4,9 +4,15 @@ All notable project changes are recorded here. A section marked `Unreleased`
 is a release candidate, not evidence of a Git tag, GitHub Release, or deployed
 runtime.
 
-## [Unreleased]
+## [0.3.3] - 2026-10-25
 
-- Enable disabled launchd jobs before bootstrapping them so install, upgrade and rollback can restart services on macOS. This fix is newer than the immutable v0.3.2 release.
+### Fixed
+
+- Enable disabled launchd jobs before bootstrapping them so install, upgrade and rollback can restart services on macOS. Existing database paths, service identities and history remain unchanged.
+
+### Added
+
+- Add opt-in tests against real macOS launchd for disabled-job recovery and Skill unload/reload, using only random test labels and temporary directories. Both macOS CI jobs run these checks.
 
 ## [0.3.2] - 2026-10-24
 
