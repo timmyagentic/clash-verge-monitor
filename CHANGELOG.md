@@ -6,6 +6,8 @@ runtime.
 
 ## [Unreleased]
 
+
+- Document the protected squash PR workflow, automatic remote task-branch deletion and existing local branch/worktree archive boundaries.
 ### Documentation
 
 - Show the real dashboard with an isolated example ledger, improve mobile installation text, and add a share preview and a single portfolio footer.
