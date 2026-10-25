@@ -12,10 +12,12 @@ For the full Chinese project context and current MVP status, see [docs/project-b
 
 ## Current release
 
-`0.3.1` includes automatic controller discovery/reconnection, independent sampling
+`0.3.3` fixes macOS service reload after a launchd job has been disabled.
+It retains existing service identities, database paths and history. It includes
+automatic controller discovery/reconnection, independent sampling
 heartbeats and coverage, policy v3, the overview dashboard, filtered queries, and
 guarded backup/restore/retention. The previously unpublished `0.4.0rc1` candidate
-is included in this patch release. Future stable versions advance sequentially
+was incorporated in 0.3.1 and remains included. Future stable versions advance sequentially
 within the `0.3.x` line. See [the reliability guide](docs/reliability.md).
 
 ## Agent queries
@@ -38,9 +40,9 @@ for empty/missing data states, error codes, HTTP compatibility, and live-read li
 
 ## Release status
 
-The stable release is [`v0.3.2`](https://github.com/timmyagentic/clash-verge-monitor/releases/tag/v0.3.2).
+The stable release is [`v0.3.3`](https://github.com/timmyagentic/clash-verge-monitor/releases/tag/v0.3.3).
 GitHub Release provides the wheel, source archive and SHA-256 checksums.
-Version 0.3.2 uses the new package/module names. Existing installations retain
+Version 0.3.3 retains the new package/module names introduced in 0.3.2. Existing installations retain
 their historical database and service identity.
 [CI](https://github.com/timmyagentic/clash-verge-monitor/actions/workflows/ci.yml)
 checks four OS/Python combinations, repository policy, and distribution builds and
