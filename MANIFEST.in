@@ -8,3 +8,5 @@ global-exclude __pycache__ *.py[cod]
 include design-qa.md
 include CONTRIBUTING.md
 include requirements-dev.txt
+
+include INSTALL.md
