@@ -36,3 +36,5 @@ The self-hosted visual assets live under `brand/` in the static directory. Font 
 Current rename previews: [desktop](../docs/rename-website-preview.png) and [390px mobile](../docs/rename-website-mobile.png). Earlier design evidence remains in `docs/website-design-qa.md` and `docs/website-brand-preview.jpg`.
 
 The legacy domain redirects with HTTP 308 to the new domain, preserving paths and query strings. Deploy and verify both domains together. The Worker resource name is retained as an infrastructure identity; see [rename compatibility](../docs/renaming.md).
+
+The homepage case is a crop of the real application screen in `website/public/assets/app-overview.png` with isolated sample data. The caption and accessible text use the values shown in that capture.
