@@ -1,0 +1,4 @@
+{
+  "prompt": "请按 https://raw.githubusercontent.com/timmyagentic/clash-verge-monitor/main/INSTALL.md 在这台 Mac 安装最新正式版、当前 Agent 的 Skill 并启动后台监控，保留现有配置和账本历史，最后验证真实采样与本地页面。",
+  "commands": "python3 -m venv .venv\n. .venv/bin/activate\npython3 -m pip install https://github.com/timmyagentic/clash-verge-monitor/releases/download/v0.3.3/clash_verge_monitor-0.3.3-py3-none-any.whl\npython3 -m clash_verge_monitor doctor"
+}
