@@ -6,6 +6,8 @@ runtime.
 
 ## [Unreleased]
 
+- Inspect the application ranking and the full ledger in the website screenshot viewer.
+
 - Let the website fill the browser width and adapt its opening layout to the available height, including wide monitors and phone orientations.
 - Collapse the daily CI matrix into two required Linux/macOS jobs while retaining policy, real launchd and distribution installation checks.
 
