@@ -6,6 +6,8 @@ runtime.
 
 ## [Unreleased]
 
+- Explore the application usage breakdown and full ledger in the new interactive website.
+
 - Inspect the application ranking and the full ledger in the website screenshot viewer.
 
 - Let the website fill the browser width and adapt its opening layout to the available height, including wide monitors and phone orientations.
