@@ -6,6 +6,8 @@ runtime.
 
 ## [Unreleased]
 
+- Show the sample daily ledger and its application usage breakdown on the product website.
+
 - Restore the original product page and its application usage example.
 
 - Let the website fill the browser width and adapt its opening layout to the available height, including wide monitors and phone orientations.
