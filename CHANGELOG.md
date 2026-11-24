@@ -6,6 +6,8 @@ runtime.
 
 ## [Unreleased]
 
+- Read a sample day as a traffic report with per-app shares and recorded totals.
+
 - Explore the application usage breakdown and full ledger in the new interactive website.
 
 - Inspect the application ranking and the full ledger in the website screenshot viewer.
