@@ -6,15 +6,10 @@ runtime.
 
 ## [Unreleased]
 
-- Read a sample day as a traffic report with per-app shares and recorded totals.
-
-- Explore the application usage breakdown and full ledger in the new interactive website.
-
-- Inspect the application ranking and the full ledger in the website screenshot viewer.
+- Restore the original product page and its application usage example.
 
 - Let the website fill the browser width and adapt its opening layout to the available height, including wide monitors and phone orientations.
 - Collapse the daily CI matrix into two required Linux/macOS jobs while retaining policy, real launchd and distribution installation checks.
-
 
 - Document the protected squash PR workflow, automatic remote task-branch deletion and existing local branch/worktree archive boundaries.
 ### Documentation
