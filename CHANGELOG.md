@@ -6,6 +6,8 @@ runtime.
 
 ## [Unreleased]
 
+- Move official website maintenance and deployment to the shared websites repository.
+
 - Restore the original product page and its application usage example.
 
 - Let the website fill the browser width and adapt its opening layout to the available height, including wide monitors and phone orientations.
