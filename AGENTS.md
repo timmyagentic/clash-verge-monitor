@@ -88,6 +88,6 @@ open existing databases read-only; destructive maintenance requires an explicit
 
 ## Continuous integration
 
-- Keep exactly two daily jobs: `Linux checks` (Python 3.11 policy, tests, website checks and distribution installation) and `macOS checks` (Python 3.14 tests and real launchd acceptance).
+- Keep exactly two daily jobs: `Linux checks` (Python 3.11 policy, tests and distribution installation) and `macOS checks` (Python 3.14 tests and real launchd acceptance).
 - Both current-head contexts are required, bound to GitHub Actions, with an up-to-date branch. Do not replace real launchd or isolated wheel installation with a summary result.
 - The tag-triggered Release workflow continues to call this same CI workflow before publishing immutable assets.
